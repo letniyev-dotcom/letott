@@ -316,9 +316,9 @@ fun LetifyApp() {
     // slide starts, true exactly when it settles (no fixed delay guesswork).
     var tabSettled by remember { mutableStateOf(true) }
 
-    // Home ⇄ Profile hero: pure analytical geometry (same as the HTML mock).
-    // Measured bounds were in the wrong coordinate space and jumped mid-flight.
-    // Layout constants mirror HomeScreen / ProfileScreen exactly.
+    // Single identity for avatar+name (Home ⇄ Profile).
+    // There is exactly ONE composable that paints them — at the root.
+    // Home/Profile only keep empty size slots (placeholders). No copy, no hide-of-real.
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         OverlayHost(parallaxProgress = parallax) {
@@ -334,14 +334,13 @@ fun LetifyApp() {
                     order = state.navbarOrder,
                     onSettledChange = { tabSettled = it },
                     modifier = Modifier.fillMaxSize(),
-                    hero = { t ->
+                    identity = { t ->
                         val density = LocalDensity.current
                         val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
                         val screenW =
                             with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
                         val name = state.userName.ifBlank { "друг" }
-                        // Always analytical — stable path, no coordinate-space bugs.
-                        AvatarFlightOverlay(
+                        UserIdentity(
                             progress = t,
                             sourceAvatar = estimatedHomeAvatarRect(density, statusBarPx),
                             targetAvatar = estimatedProfileAvatarRect(density, statusBarPx, screenW),
@@ -354,7 +353,7 @@ fun LetifyApp() {
                             letter = name.firstOrNull()?.uppercase() ?: "?",
                         )
                     },
-                ) { tab, hideHero ->
+                ) { tab, usePlaceholder ->
                     tabStateHolder.SaveableStateProvider(tab.name) {
                         when (tab) {
                             Tab.Home -> HomeScreen(
@@ -365,7 +364,8 @@ fun LetifyApp() {
                                 onOpenProfile = { state.currentTab = Tab.Profile },
                                 onOpenPlan = { state.currentTab = Tab.Plan },
                                 onOpenMoments = { push(AddOverlay.Media) },
-                                hideAvatarName = hideHero,
+                                // Placeholder only — the one real identity is at the root.
+                                hideAvatarName = usePlaceholder,
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -392,7 +392,7 @@ fun LetifyApp() {
                                 onQuickCamera = { openCamera() },
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
-                                hideAvatarName = hideHero,
+                                hideAvatarName = usePlaceholder,
                             )
                         }
                     }
@@ -656,9 +656,13 @@ private fun CachedTabPager(
     order: List<Tab>,
     onSettledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    /** Absolute hero progress 0=home … 1=profile. Same Animatable as the page. */
-    hero: (@Composable (t: Float) -> Unit)? = null,
-    content: @Composable (tab: Tab, hideHero: Boolean) -> Unit,
+    /**
+     * The single avatar+name identity. `t` is absolute: 0 = home layout,
+     * 1 = profile layout. Drawn whenever Home or Profile owns the surface —
+     * at rest and during the flight. Screens only reserve empty slots.
+     */
+    identity: (@Composable (t: Float) -> Unit)? = null,
+    content: @Composable (tab: Tab, usePlaceholder: Boolean) -> Unit,
 ) {
     val visited = remember { mutableStateListOf<Tab>() }
     if (current !in visited) visited.add(current)
@@ -692,7 +696,6 @@ private fun CachedTabPager(
 
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat()
-        // First frame after tap (before LE): treat as start of transition at p=0.
         val pending = current != toTab
         val activeFrom = if (pending) toTab else fromTab
         val activeTo = if (pending) current else toTab
@@ -700,11 +703,15 @@ private fun CachedTabPager(
         val isAvatarPair =
             (activeFrom == Tab.Home && activeTo == Tab.Profile) ||
             (activeFrom == Tab.Profile && activeTo == Tab.Home)
-        val showHero = isAvatarPair
-        val heroT = when {
+        val settledHome = activeFrom == Tab.Home && activeTo == Tab.Home
+        val settledProfile = activeFrom == Tab.Profile && activeTo == Tab.Profile
+        // One identity whenever Home or Profile is the active surface.
+        val showIdentity = isAvatarPair || settledHome || settledProfile
+        val identityT = when {
             isAvatarPair && activeTo == Tab.Profile -> p
             isAvatarPair && activeTo == Tab.Home -> 1f - p
-            else -> 0f
+            settledProfile -> 1f
+            else -> 0f // settled home
         }
         val activeDir =
             if (order.indexOf(activeTo).coerceAtLeast(0) >= order.indexOf(activeFrom).coerceAtLeast(0))
@@ -713,9 +720,6 @@ private fun CachedTabPager(
         visited.forEach { tab ->
             val parked = tab != activeTo && tab != activeFrom
             if (isAvatarPair && !parked) {
-                // Shared-axis like the HTML mock:
-                // home parallax 28%, profile full-width slide. Both opaque.
-                // Avatar/name hidden; hero flies above with same p.
                 val parallax = 0.28f
                 val dx = when {
                     tab == activeFrom && activeTo == Tab.Profile -> -p * parallax * w
@@ -733,6 +737,7 @@ private fun CachedTabPager(
                             clip = true
                         },
                 ) {
+                    // Placeholders only — identity is the single painter at root.
                     content(tab, true)
                 }
                 return@forEach
@@ -742,6 +747,8 @@ private fun CachedTabPager(
                 activeFrom -> -p * activeDir * w
                 else -> w
             }
+            // Home/Profile use placeholders whenever the root identity is shown.
+            val usePlaceholder = showIdentity && (tab == Tab.Home || tab == Tab.Profile)
             Box(
                 Modifier
                     .fillMaxSize()
@@ -752,20 +759,20 @@ private fun CachedTabPager(
                         clip = true
                     },
             ) {
-                content(tab, false)
+                content(tab, usePlaceholder)
             }
         }
 
-        if (showHero && hero != null) {
+        if (showIdentity && identity != null) {
             Box(Modifier.fillMaxSize().zIndex(20f)) {
-                hero(heroT)
+                identity(identityT)
             }
         }
     }
 }
 
 @Composable
-private fun AvatarFlightOverlay(
+private fun UserIdentity(
     progress: Float,
     sourceAvatar: Rect,
     targetAvatar: Rect,
