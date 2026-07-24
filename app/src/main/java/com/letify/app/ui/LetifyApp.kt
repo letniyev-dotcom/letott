@@ -102,7 +102,7 @@ private val TabPushEasing = CubicBezierEasing(0.32f, 0.72f, 0.0f, 1.0f)
 private const val TabPushMs = 320
 // Home⇄Profile hero: longer + softer so the flight feels like a glide, not a snap.
 private val HeroFlightEasing = CubicBezierEasing(0.22f, 1.0f, 0.36f, 1.0f)
-private const val HeroFlightMs = 480
+private const val HeroFlightMs = 520
 
 // Smooth decelerate for the camera slide-up from bottom.
 private val CameraSlideEasing = CubicBezierEasing(0.22f, 1.0f, 0.36f, 1.0f)
@@ -316,18 +316,35 @@ fun LetifyApp() {
     // slide starts, true exactly when it settles (no fixed delay guesswork).
     var tabSettled by remember { mutableStateOf(true) }
 
-    // Home ⇄ Profile hero: avatar+name fly with the SAME progress that drives
-    // the page transition — one Animatable, one frame, no lag between layers.
+    // Home ⇄ Profile hero flight.
+    // Live bounds (updated every layout). Frozen snapshot is taken the moment
+    // a Home↔Profile flight starts so the lerp path never jumps mid-flight.
     var homeAvatarRect by remember { mutableStateOf<Rect?>(null) }
     var homeNameRect by remember { mutableStateOf<Rect?>(null) }
     var profileAvatarRect by remember { mutableStateOf<Rect?>(null) }
     var profileNameRect by remember { mutableStateOf<Rect?>(null) }
+    var flightSnap by remember { mutableStateOf<FlightSnap?>(null) }
     val densityForBounds = LocalDensity.current
     val screenWidthPxForBounds =
         with(densityForBounds) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    val statusBarPxForBounds = WindowInsets.statusBars.getTop(densityForBounds).toFloat()
     fun Rect.isOnScreen(): Boolean {
         val cx = (left + right) * 0.5f
         return cx >= 0f && cx <= screenWidthPxForBounds
+    }
+    fun captureFlightSnap(): FlightSnap {
+        val density = densityForBounds
+        val statusBarPx = statusBarPxForBounds
+        val screenW = screenWidthPxForBounds
+        val name = state.userName.ifBlank { "друг" }
+        return FlightSnap(
+            homeAvatar = homeAvatarRect ?: estimatedHomeAvatarRect(density, statusBarPx),
+            homeName = homeNameRect ?: estimatedHomeNameRect(density, statusBarPx, name),
+            profileAvatar = profileAvatarRect
+                ?: estimatedProfileAvatarRect(density, statusBarPx, screenW),
+            profileName = profileNameRect
+                ?: estimatedProfileNameRect(density, statusBarPx, screenW, name),
+        )
     }
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
@@ -342,9 +359,14 @@ fun LetifyApp() {
                 CachedTabPager(
                     current = state.currentTab,
                     order = state.navbarOrder,
-                    onSettledChange = { tabSettled = it },
+                    onSettledChange = { settled ->
+                        tabSettled = settled
+                        if (settled) flightSnap = null
+                    },
+                    onProfileFlightStart = { flightSnap = captureFlightSnap() },
                     modifier = Modifier.fillMaxSize(),
                     hero = { t ->
+                        val snap = flightSnap
                         val density = LocalDensity.current
                         val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
                         val screenW =
@@ -352,13 +374,17 @@ fun LetifyApp() {
                         val name = state.userName.ifBlank { "друг" }
                         AvatarFlightOverlay(
                             progress = t,
-                            sourceAvatar = homeAvatarRect
+                            sourceAvatar = snap?.homeAvatar
+                                ?: homeAvatarRect
                                 ?: estimatedHomeAvatarRect(density, statusBarPx),
-                            targetAvatar = profileAvatarRect
+                            targetAvatar = snap?.profileAvatar
+                                ?: profileAvatarRect
                                 ?: estimatedProfileAvatarRect(density, statusBarPx, screenW),
-                            sourceName = homeNameRect
+                            sourceName = snap?.homeName
+                                ?: homeNameRect
                                 ?: estimatedHomeNameRect(density, statusBarPx, name),
-                            targetName = profileNameRect
+                            targetName = snap?.profileName
+                                ?: profileNameRect
                                 ?: estimatedProfileNameRect(density, statusBarPx, screenW, name),
                             sourceFontSp = 19f,
                             targetFontSp = 22f,
@@ -667,11 +693,19 @@ private fun TiwiPlaceholder(onBack: () -> Unit) {
  * two-screen push is animated (from → to), exactly like before, regardless of
  * how far apart the tabs sit in the navbar.
  */
+private data class FlightSnap(
+    val homeAvatar: Rect,
+    val homeName: Rect,
+    val profileAvatar: Rect,
+    val profileName: Rect,
+)
+
 @Composable
 private fun CachedTabPager(
     current: Tab,
     order: List<Tab>,
     onSettledChange: (Boolean) -> Unit,
+    onProfileFlightStart: () -> Unit = {},
     modifier: Modifier = Modifier,
     /** Absolute hero progress 0=home … 1=profile. Same Animatable as the page. */
     hero: (@Composable (t: Float) -> Unit)? = null,
@@ -683,16 +717,25 @@ private fun CachedTabPager(
     var fromTab by remember { mutableStateOf(current) }
     var toTab by remember { mutableStateOf(current) }
     val progress = remember { Animatable(1f) }
+    // Stays true for the whole Home↔Profile flight including the first frame
+    // before LaunchedEffect runs — prevents the end-jump blink.
+    var profileFlying by remember { mutableStateOf(false) }
 
     LaunchedEffect(current) {
         if (current != toTab) {
-            fromTab = toTab
-            toTab = current
+            val prev = toTab
+            val next = current
+            val isProfilePair =
+                (prev == Tab.Home && next == Tab.Profile) ||
+                (prev == Tab.Profile && next == Tab.Home)
+            fromTab = prev
+            toTab = next
+            if (isProfilePair) {
+                profileFlying = true
+                onProfileFlightStart()
+            }
             onSettledChange(false)
             progress.snapTo(0f)
-            val isProfilePair =
-                (fromTab == Tab.Home && toTab == Tab.Profile) ||
-                (fromTab == Tab.Profile && toTab == Tab.Home)
             progress.animateTo(
                 1f,
                 animationSpec = tween(
@@ -700,26 +743,34 @@ private fun CachedTabPager(
                     easing = if (isProfilePair) HeroFlightEasing else TabPushEasing,
                 ),
             )
+            profileFlying = false
             onSettledChange(true)
             fromTab = current
         }
     }
 
+    // Kick profileFlying on the first frame (before LE) so hero starts at t=0.
+    val pending = current != toTab
+    if (pending) {
+        val pair =
+            (toTab == Tab.Home && current == Tab.Profile) ||
+            (toTab == Tab.Profile && current == Tab.Home)
+        if (pair && !profileFlying) {
+            // Side-effect free flag via remembered write is not allowed during
+            // composition; profileFlying is set in LE. Use pending+pair for draw.
+        }
+    }
+
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat()
-        // First frame after current changes (before LaunchedEffect): treat as
-        // transition starting at p=0 so the hero never jumps to the end and
-        // snaps back (that was the blink / lag).
-        val pending = current != toTab
         val activeFrom = if (pending) toTab else fromTab
         val activeTo = if (pending) current else toTab
+        // Force p=0 on the pending frame so we never flash the end state.
         val p = if (pending && progress.value >= 0.999f) 0f else progress.value
         val isAvatarPair =
             (activeFrom == Tab.Home && activeTo == Tab.Profile) ||
             (activeFrom == Tab.Profile && activeTo == Tab.Home)
-        // Hero only while the flight is in progress — at rest each screen
-        // draws its own avatar, no separate always-on layer.
-        val showHero = isAvatarPair
+        val showHero = isAvatarPair || profileFlying
         val heroT = when {
             isAvatarPair && activeTo == Tab.Profile -> p
             isAvatarPair && activeTo == Tab.Home -> 1f - p
@@ -732,22 +783,21 @@ private fun CachedTabPager(
         visited.forEach { tab ->
             val parked = tab != activeTo && tab != activeFrom
             if (isAvatarPair && !parked) {
-                // Stay in place (dx=0) so bounds stay valid. Incoming has solid
-                // bg (no see-through); content fades with the same p as the hero.
+                // Both screens stay put. Outgoing full opacity underneath.
+                // Incoming: ONE layer (bg + content) fades with the same p as
+                // the hero — no separate empty solid panel that "pops".
                 val incoming = tab == activeTo
                 Box(
                     Modifier
                         .fillMaxSize()
                         .zIndex(if (incoming) 1f else 0f)
-                        .then(if (incoming) Modifier.background(Letify.colors.bg) else Modifier),
-                ) {
-                    if (incoming) {
-                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = p }) {
-                            content(tab, true)
+                        .graphicsLayer {
+                            alpha = if (incoming) p else 1f
+                            clip = true
                         }
-                    } else {
-                        content(tab, true)
-                    }
+                        .background(Letify.colors.bg),
+                ) {
+                    content(tab, true)
                 }
                 return@forEach
             }
@@ -766,7 +816,6 @@ private fun CachedTabPager(
                         clip = true
                     },
             ) {
-                // hide only during active flight; settled screens draw their own
                 content(tab, false)
             }
         }
