@@ -316,36 +316,9 @@ fun LetifyApp() {
     // slide starts, true exactly when it settles (no fixed delay guesswork).
     var tabSettled by remember { mutableStateOf(true) }
 
-    // Home ⇄ Profile hero flight.
-    // Live bounds (updated every layout). Frozen snapshot is taken the moment
-    // a Home↔Profile flight starts so the lerp path never jumps mid-flight.
-    var homeAvatarRect by remember { mutableStateOf<Rect?>(null) }
-    var homeNameRect by remember { mutableStateOf<Rect?>(null) }
-    var profileAvatarRect by remember { mutableStateOf<Rect?>(null) }
-    var profileNameRect by remember { mutableStateOf<Rect?>(null) }
-    var flightSnap by remember { mutableStateOf<FlightSnap?>(null) }
-    val densityForBounds = LocalDensity.current
-    val screenWidthPxForBounds =
-        with(densityForBounds) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
-    val statusBarPxForBounds = WindowInsets.statusBars.getTop(densityForBounds).toFloat()
-    fun Rect.isOnScreen(): Boolean {
-        val cx = (left + right) * 0.5f
-        return cx >= 0f && cx <= screenWidthPxForBounds
-    }
-    fun captureFlightSnap(): FlightSnap {
-        val density = densityForBounds
-        val statusBarPx = statusBarPxForBounds
-        val screenW = screenWidthPxForBounds
-        val name = state.userName.ifBlank { "друг" }
-        return FlightSnap(
-            homeAvatar = homeAvatarRect ?: estimatedHomeAvatarRect(density, statusBarPx),
-            homeName = homeNameRect ?: estimatedHomeNameRect(density, statusBarPx, name),
-            profileAvatar = profileAvatarRect
-                ?: estimatedProfileAvatarRect(density, statusBarPx, screenW),
-            profileName = profileNameRect
-                ?: estimatedProfileNameRect(density, statusBarPx, screenW, name),
-        )
-    }
+    // Home ⇄ Profile hero: pure analytical geometry (same as the HTML mock).
+    // Measured bounds were in the wrong coordinate space and jumped mid-flight.
+    // Layout constants mirror HomeScreen / ProfileScreen exactly.
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         OverlayHost(parallaxProgress = parallax) {
@@ -359,33 +332,21 @@ fun LetifyApp() {
                 CachedTabPager(
                     current = state.currentTab,
                     order = state.navbarOrder,
-                    onSettledChange = { settled ->
-                        tabSettled = settled
-                        if (settled) flightSnap = null
-                    },
-                    onProfileFlightStart = { flightSnap = captureFlightSnap() },
+                    onSettledChange = { tabSettled = it },
                     modifier = Modifier.fillMaxSize(),
                     hero = { t ->
-                        val snap = flightSnap
                         val density = LocalDensity.current
                         val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
                         val screenW =
                             with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
                         val name = state.userName.ifBlank { "друг" }
+                        // Always analytical — stable path, no coordinate-space bugs.
                         AvatarFlightOverlay(
                             progress = t,
-                            sourceAvatar = snap?.homeAvatar
-                                ?: homeAvatarRect
-                                ?: estimatedHomeAvatarRect(density, statusBarPx),
-                            targetAvatar = snap?.profileAvatar
-                                ?: profileAvatarRect
-                                ?: estimatedProfileAvatarRect(density, statusBarPx, screenW),
-                            sourceName = snap?.homeName
-                                ?: homeNameRect
-                                ?: estimatedHomeNameRect(density, statusBarPx, name),
-                            targetName = snap?.profileName
-                                ?: profileNameRect
-                                ?: estimatedProfileNameRect(density, statusBarPx, screenW, name),
+                            sourceAvatar = estimatedHomeAvatarRect(density, statusBarPx),
+                            targetAvatar = estimatedProfileAvatarRect(density, statusBarPx, screenW),
+                            sourceName = estimatedHomeNameRect(density, statusBarPx, name),
+                            targetName = estimatedProfileNameRect(density, statusBarPx, screenW, name),
                             sourceFontSp = 19f,
                             targetFontSp = 22f,
                             name = name,
@@ -405,8 +366,6 @@ fun LetifyApp() {
                                 onOpenPlan = { state.currentTab = Tab.Plan },
                                 onOpenMoments = { push(AddOverlay.Media) },
                                 hideAvatarName = hideHero,
-                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) homeAvatarRect = r },
-                                onNameBoundsChanged = { r -> if (r.isOnScreen()) homeNameRect = r },
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -434,8 +393,6 @@ fun LetifyApp() {
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
                                 hideAvatarName = hideHero,
-                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) profileAvatarRect = r },
-                                onNameBoundsChanged = { r -> if (r.isOnScreen()) profileNameRect = r },
                             )
                         }
                     }
@@ -693,19 +650,11 @@ private fun TiwiPlaceholder(onBack: () -> Unit) {
  * two-screen push is animated (from → to), exactly like before, regardless of
  * how far apart the tabs sit in the navbar.
  */
-private data class FlightSnap(
-    val homeAvatar: Rect,
-    val homeName: Rect,
-    val profileAvatar: Rect,
-    val profileName: Rect,
-)
-
 @Composable
 private fun CachedTabPager(
     current: Tab,
     order: List<Tab>,
     onSettledChange: (Boolean) -> Unit,
-    onProfileFlightStart: () -> Unit = {},
     modifier: Modifier = Modifier,
     /** Absolute hero progress 0=home … 1=profile. Same Animatable as the page. */
     hero: (@Composable (t: Float) -> Unit)? = null,
@@ -717,26 +666,6 @@ private fun CachedTabPager(
     var fromTab by remember { mutableStateOf(current) }
     var toTab by remember { mutableStateOf(current) }
     val progress = remember { Animatable(1f) }
-    // Stays true for the whole Home↔Profile flight including the first frame
-    // before LaunchedEffect runs — prevents the end-jump blink.
-    var profileFlying by remember { mutableStateOf(false) }
-
-    val pending = current != toTab
-    val pendingIsProfile =
-        pending && (
-            (toTab == Tab.Home && current == Tab.Profile) ||
-            (toTab == Tab.Profile && current == Tab.Home)
-        )
-
-    // Capture flight geometry + flag on the same frame the user taps, before
-    // LaunchedEffect — so the first drawn frame already has a frozen path and
-    // hero at t=0 (no jump-to-end / snap-back blink).
-    androidx.compose.runtime.SideEffect {
-        if (pendingIsProfile && !profileFlying) {
-            profileFlying = true
-            onProfileFlightStart()
-        }
-    }
 
     LaunchedEffect(current) {
         if (current != toTab) {
@@ -747,10 +676,6 @@ private fun CachedTabPager(
                 (prev == Tab.Profile && next == Tab.Home)
             fromTab = prev
             toTab = next
-            if (isProfilePair && !profileFlying) {
-                profileFlying = true
-                onProfileFlightStart()
-            }
             onSettledChange(false)
             progress.snapTo(0f)
             progress.animateTo(
@@ -760,7 +685,6 @@ private fun CachedTabPager(
                     easing = if (isProfilePair) HeroFlightEasing else TabPushEasing,
                 ),
             )
-            profileFlying = false
             onSettledChange(true)
             fromTab = current
         }
@@ -768,14 +692,15 @@ private fun CachedTabPager(
 
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat()
+        // First frame after tap (before LE): treat as start of transition at p=0.
+        val pending = current != toTab
         val activeFrom = if (pending) toTab else fromTab
         val activeTo = if (pending) current else toTab
-        // Force p=0 on the pending frame so we never flash the end state.
         val p = if (pending && progress.value >= 0.999f) 0f else progress.value
         val isAvatarPair =
             (activeFrom == Tab.Home && activeTo == Tab.Profile) ||
             (activeFrom == Tab.Profile && activeTo == Tab.Home)
-        val showHero = isAvatarPair || profileFlying
+        val showHero = isAvatarPair
         val heroT = when {
             isAvatarPair && activeTo == Tab.Profile -> p
             isAvatarPair && activeTo == Tab.Home -> 1f - p
@@ -788,11 +713,9 @@ private fun CachedTabPager(
         visited.forEach { tab ->
             val parked = tab != activeTo && tab != activeFrom
             if (isAvatarPair && !parked) {
-                // Home↔Profile shared-axis (matches ideal HTML):
-                //  • home parallax-shifts ~28%; profile full-slides in/out
-                //  • both stay opaque (no fade flash)
-                //  • same p drives hero flight → layers stay in sync
-                //  • avatar/name hidden on both; one hero flies on top
+                // Shared-axis like the HTML mock:
+                // home parallax 28%, profile full-width slide. Both opaque.
+                // Avatar/name hidden; hero flies above with same p.
                 val parallax = 0.28f
                 val dx = when {
                     tab == activeFrom && activeTo == Tab.Profile -> -p * parallax * w
@@ -833,7 +756,6 @@ private fun CachedTabPager(
             }
         }
 
-        // Hero on top of both screens, same p, every frame of the flight.
         if (showHero && hero != null) {
             Box(Modifier.fillMaxSize().zIndex(20f)) {
                 hero(heroT)
@@ -857,17 +779,23 @@ private fun AvatarFlightOverlay(
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
-    val avatarRect = lerp(sourceAvatar, targetAvatar, progress)
-    val nameRect = lerp(sourceName, targetName, progress)
-    val fontSp = sourceFontSp + (targetFontSp - sourceFontSp) * progress
+    // Clamp so a bad frame never overshoots.
+    val t = progress.coerceIn(0f, 1f)
+    val avatarRect = lerp(sourceAvatar, targetAvatar, t)
+    val nameRect = lerp(sourceName, targetName, t)
+    val fontSp = sourceFontSp + (targetFontSp - sourceFontSp) * t
     val avatarBrush = Brush.linearGradient(
         listOf(Letify.colors.accent, LetifyColors.TilePink),
     )
 
+    // Position via graphicsLayer translation from the top-left of the parent
+    // (full-screen pager). Analytical rects are in that same space.
     Box(
         Modifier
-            .zIndex(45f)
-            .offset { IntOffset(avatarRect.left.roundToInt(), avatarRect.top.roundToInt()) }
+            .graphicsLayer {
+                translationX = avatarRect.left
+                translationY = avatarRect.top
+            }
             .size(
                 with(density) { avatarRect.width.toDp() },
                 with(density) { avatarRect.height.toDp() },
@@ -894,13 +822,15 @@ private fun AvatarFlightOverlay(
 
     Box(
         Modifier
-            .zIndex(45f)
-            .offset { IntOffset(nameRect.left.roundToInt(), nameRect.top.roundToInt()) }
+            .graphicsLayer {
+                translationX = nameRect.left
+                translationY = nameRect.top
+            }
             .size(
                 with(density) { nameRect.width.toDp() },
                 with(density) { nameRect.height.toDp() },
             ),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterStart,
     ) {
         Text(
             name,
@@ -908,12 +838,13 @@ private fun AvatarFlightOverlay(
             fontSize = fontSp.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
     }
 }
 
+// Layout constants mirrored from HomeScreen / ProfileScreen — do not drift.
 private fun estimatedHomeAvatarRect(density: Density, statusBarPx: Float): Rect {
+    // Column top pad 6 + row vertical pad 10 = 16; horizontal pad 20; size 34
     val left = with(density) { 20.dp.toPx() }
     val top = statusBarPx + with(density) { 16.dp.toPx() }
     val size = with(density) { 34.dp.toPx() }
@@ -924,14 +855,16 @@ private fun estimatedHomeNameRect(density: Density, statusBarPx: Float, name: St
     val avatarTop = statusBarPx + with(density) { 16.dp.toPx() }
     val avatarSize = with(density) { 34.dp.toPx() }
     val centerY = avatarTop + avatarSize / 2f
+    // 20 pad + 34 avatar + 12 spacer
     val left = with(density) { 66.dp.toPx() }
     val fontPx = with(density) { 19.sp.toPx() }
-    val height = fontPx * 1.25f
-    val width = name.length.coerceAtLeast(1) * fontPx * 0.55f
+    val height = fontPx * 1.2f
+    val width = name.length.coerceAtLeast(1) * fontPx * 0.62f
     return Rect(left, centerY - height / 2f, left + width, centerY + height / 2f)
 }
 
 private fun estimatedProfileAvatarRect(density: Density, statusBarPx: Float, screenWidthPx: Float): Rect {
+    // ScreenScaffold statusBars + header row ~56dp + avatar top pad 2dp
     val top = statusBarPx + with(density) { 58.dp.toPx() }
     val size = with(density) { 108.dp.toPx() }
     val left = (screenWidthPx - size) / 2f
@@ -948,8 +881,8 @@ private fun estimatedProfileNameRect(
     val avatarSize = with(density) { 108.dp.toPx() }
     val top = avatarTop + avatarSize + with(density) { 10.dp.toPx() }
     val fontPx = with(density) { 22.sp.toPx() }
-    val height = fontPx * 1.25f
-    val width = name.length.coerceAtLeast(1) * fontPx * 0.55f
+    val height = fontPx * 1.2f
+    val width = name.length.coerceAtLeast(1) * fontPx * 0.62f
     val centerX = screenWidthPx / 2f
     return Rect(centerX - width / 2f, top, centerX + width / 2f, top + height)
 }
