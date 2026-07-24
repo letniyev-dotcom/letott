@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 204
-        versionName = "r204-profile-noscroll-other"
+        versionCode = 205
+        versionName = "r205-moments-size-restore"
         vectorDrawables { useSupportLibrary = true }
     }
 

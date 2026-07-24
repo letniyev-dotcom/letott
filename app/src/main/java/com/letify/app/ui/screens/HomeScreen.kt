@@ -447,61 +447,69 @@ private fun PlanRow(task: TaskItem, isCurrent: Boolean, nowMin: Int, dateKey: St
 private fun MomentsStack(items: List<MediaItem>) {
     val rotations = listOf(-7f, 2f, 8f)
     val offsets = listOf(0.dp, 14.dp, 28.dp)
-    // Parent row is `container`-colored. Empty tiles must NOT also be
-    // `container` (white-on-white → invisible in light theme). Fill with
-    // page `bg` (opaque, always contrasts with the parent). Ring matches
-    // the parent `container` so overlaps get a clean separator gap —
-    // the underlay the user asked for, not a translucent smear.
+    // Card body stays the original 36×44. Separator is an UNDERLAY behind
+    // each card (parent `container` color), not a border that eats into the
+    // plate — so the tiles look the same size as before, just with a clean
+    // gap where they overlap.
     val plate = Letify.colors.bg
     val ring = Letify.colors.container
-    Box(Modifier.width(72.dp).height(48.dp)) {
-        // back → front so z-order is correct
+    val ringW = 2.5.dp
+    val cardW = 36.dp
+    val cardH = 44.dp
+    Box(Modifier.width(68.dp + ringW * 2).height(cardH + ringW * 2)) {
         for (i in 2 downTo 0) {
             val item = items.getOrNull(i)
             val isAdd = items.isEmpty() && i == 0
+            // Outer = separator underlay (container color of the parent row).
             Box(
                 Modifier
                     .padding(start = offsets[i])
-                    .size(width = 36.dp, height = 44.dp)
+                    .size(width = cardW + ringW * 2, height = cardH + ringW * 2)
                     .zIndex((3 - i).toFloat())
                     .rotate(rotations[i])
-                    // Ring first (parent-container color) = separator underlay.
-                    .border(2.5.dp, ring, RoundedCornerShape(10.dp))
-                    .clip(RoundedCornerShape(10.dp))
-                    // Opaque plate — never alpha-blended white/track.
-                    .background(plate)
-                    .then(
-                        if (isAdd) Modifier.background(Letify.colors.accent.copy(alpha = 0.18f))
-                        else Modifier
-                    ),
+                    .clip(RoundedCornerShape(10.dp + ringW))
+                    .background(ring),
                 contentAlignment = Alignment.Center,
             ) {
-                when {
-                    item != null && !item.isVideo -> {
-                        AsyncImage(
-                            model = item.uri,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-                    item != null -> {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(Color(0xFF2A2A2E)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("▶", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                // Inner = original-size opaque plate (+ content).
+                Box(
+                    Modifier
+                        .size(width = cardW, height = cardH)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(plate)
+                        .then(
+                            if (isAdd) Modifier.background(Letify.colors.accent.copy(alpha = 0.18f))
+                            else Modifier
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when {
+                        item != null && !item.isVideo -> {
+                            AsyncImage(
+                                model = item.uri,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
                         }
-                    }
-                    isAdd -> {
-                        Text(
-                            "+",
-                            color = Letify.colors.accent,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        item != null -> {
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xFF2A2A2E)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("▶", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                            }
+                        }
+                        isAdd -> {
+                            Text(
+                                "+",
+                                color = Letify.colors.accent,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
             }
