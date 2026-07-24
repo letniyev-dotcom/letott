@@ -731,14 +731,26 @@ private fun CachedTabPager(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        // Opaque page bg — Profile/ScreenScaffold used to be
-                        // transparent, so home bled through during the slide.
-                        .background(Letify.colors.bg)
                         .zIndex(if (tab == activeTo) 1f else 0f)
                         .graphicsLayer {
                             translationX = dx
                             clip = true
-                        },
+                        }
+                        // Opaque page bg — Profile/ScreenScaffold used to be
+                        // transparent, so home bled through during the slide.
+                        // MUST come AFTER graphicsLayer in the chain: a
+                        // .background() placed BEFORE graphicsLayer draws on
+                        // the outer/untransformed canvas, so it painted the
+                        // FULL viewport at its static layout position — not
+                        // the translated/clipped position — regardless of
+                        // `dx`. That made the entering tab's plate cover the
+                        // whole screen from frame 0 (the other tab "resko
+                        // ischezaet") while its actual content still had to
+                        // slide in underneath that plate ("prosvechivaet").
+                        // Moving background after graphicsLayer makes it
+                        // part of the SAME transformed+clipped layer as the
+                        // content, so plate and content move as one.
+                        .background(Letify.colors.bg),
                 ) {
                     // Placeholders only — identity is the single painter at root.
                     content(tab, true)
@@ -755,13 +767,20 @@ private fun CachedTabPager(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Letify.colors.bg)
                     .zIndex(if (tab == activeTo) 1f else 0f)
                     .graphicsLayer {
                         translationX = dx
                         alpha = if (parked) 0f else 1f
                         clip = true
-                    },
+                    }
+                    // See the identical fix + comment in the avatar-pair
+                    // branch above: background must come AFTER graphicsLayer
+                    // so it's part of the same translated/clipped layer as
+                    // the content, instead of statically covering the whole
+                    // viewport at the untransformed layout position (which
+                    // hid the outgoing tab instantly on every push, e.g.
+                    // Home -> Plan).
+                    .background(Letify.colors.bg),
             ) {
                 content(tab, usePlaceholder)
             }
