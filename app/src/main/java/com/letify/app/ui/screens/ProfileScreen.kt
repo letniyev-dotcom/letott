@@ -32,6 +32,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.letify.app.ui.components.BackButton
@@ -108,12 +111,13 @@ fun ProfileScreen(
             }
         }
 
-        // Avatar. Falls back to the accent-tinted user glyph when no
-        // Telegram photo is bound — the fallback is painted first so the
-        // empty slot never shows through.
+        // Avatar. Same treatment as the Home header: gradient disc + letter
+        // when no Telegram photo is bound (not a generic user glyph).
         val tgUser = state.telegramUser
         val photoUrl = tgUser?.photoUrl
         val context = LocalContext.current
+        val profileName = state.userName.ifBlank { "друг" }
+        val letter = profileName.firstOrNull()?.uppercase() ?: "?"
         // One more kick if we somehow still have a bound user without a photo
         // (e.g. previous session's fetch failed offline). Cheap no-op when the
         // URL is already present.
@@ -129,10 +133,18 @@ fun ProfileScreen(
                     .onGloballyPositioned { onAvatarBoundsChanged(it.boundsInWindow()) }
                     .alpha(if (hideAvatarName) 0f else 1f)
                     .clip(CircleShape)
-                    .background(Letify.colors.accentSoft, CircleShape),
+                    .background(
+                        Brush.linearGradient(listOf(Letify.colors.accent, LetifyColors.TilePink)),
+                        CircleShape,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
-                SolarIcon(name = "user-outline", tint = Letify.colors.accent, size = 56.dp)
+                Text(
+                    letter,
+                    color = Color.White,
+                    fontSize = 42.sp,
+                    fontWeight = FontWeight.Bold,
+                )
                 if (!photoUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
@@ -152,7 +164,7 @@ fun ProfileScreen(
         // between Telegram bind, profile editor and this header.
         Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
             Text(
-                state.userName,
+                profileName,
                 color = Letify.colors.text,
                 style = Letify.typography.headlineLarge,
                 modifier = Modifier

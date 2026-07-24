@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -83,6 +84,7 @@ import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.state.Tab
 import com.letify.app.ui.state.TransitionStyle
 import com.letify.app.ui.theme.Letify
+import com.letify.app.ui.theme.LetifyColors
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.Job
@@ -326,6 +328,27 @@ fun LetifyApp() {
     var homeNameRect by remember { mutableStateOf<Rect?>(null) }
     var profileAvatarRect by remember { mutableStateOf<Rect?>(null) }
     var profileNameRect by remember { mutableStateOf<Rect?>(null) }
+    // Geometry frozen shortly after a flight begins so a late first-measure
+    // of Profile (or an off-screen remeasure from a parked tab) can't yank
+    // the flying avatar/name mid-air.
+    var frozenFlight by remember { mutableStateOf<FlightGeom?>(null) }
+
+    val densityForBounds = LocalDensity.current
+    val screenWidthPxForBounds =
+        with(densityForBounds) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+
+    // Parked tabs sit at translationX=±width — their boundsInWindow are
+    // off-screen. Accepting those would make the next flight start/end
+    // "from nowhere". Only keep measurements whose center is on screen.
+    fun Rect.isOnScreen(): Boolean {
+        val cx = (left + right) * 0.5f
+        return cx >= 0f && cx <= screenWidthPxForBounds
+    }
+
+    // Clear frozen geometry when the flight ends.
+    LaunchedEffect(avatarFlightActive) {
+        if (!avatarFlightActive) frozenFlight = null
+    }
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         OverlayHost(parallaxProgress = parallax) {
@@ -362,8 +385,8 @@ fun LetifyApp() {
                                 onOpenPlan = { state.currentTab = Tab.Plan },
                                 onOpenMoments = { push(AddOverlay.Media) },
                                 hideAvatarName = avatarFlightActive,
-                                onAvatarBoundsChanged = { homeAvatarRect = it },
-                                onNameBoundsChanged = { homeNameRect = it },
+                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) homeAvatarRect = r },
+                                onNameBoundsChanged = { r -> if (r.isOnScreen()) homeNameRect = r },
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -391,8 +414,8 @@ fun LetifyApp() {
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
                                 hideAvatarName = avatarFlightActive,
-                                onAvatarBoundsChanged = { profileAvatarRect = it },
-                                onNameBoundsChanged = { profileNameRect = it },
+                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) profileAvatarRect = r },
+                                onNameBoundsChanged = { r -> if (r.isOnScreen()) profileNameRect = r },
                             )
                         }
                     }
@@ -412,25 +435,54 @@ fun LetifyApp() {
             val enteringProfile = state.currentTab == Tab.Profile
             val flightName = state.userName.ifBlank { "друг" }
 
-            val sourceAvatar = (if (enteringProfile) homeAvatarRect else profileAvatarRect)
+            val liveSourceAvatar = (if (enteringProfile) homeAvatarRect else profileAvatarRect)
                 ?: if (enteringProfile) estimatedHomeAvatarRect(density, statusBarPx)
                 else estimatedProfileAvatarRect(density, statusBarPx, screenWidthPx)
-            val targetAvatar = (if (enteringProfile) profileAvatarRect else homeAvatarRect)
+            val liveTargetAvatar = (if (enteringProfile) profileAvatarRect else homeAvatarRect)
                 ?: if (enteringProfile) estimatedProfileAvatarRect(density, statusBarPx, screenWidthPx)
                 else estimatedHomeAvatarRect(density, statusBarPx)
-            val sourceName = (if (enteringProfile) homeNameRect else profileNameRect)
+            val liveSourceName = (if (enteringProfile) homeNameRect else profileNameRect)
                 ?: if (enteringProfile) estimatedHomeNameRect(density, statusBarPx, flightName)
                 else estimatedProfileNameRect(density, statusBarPx, screenWidthPx, flightName)
-            val targetName = (if (enteringProfile) profileNameRect else homeNameRect)
+            val liveTargetName = (if (enteringProfile) profileNameRect else homeNameRect)
                 ?: if (enteringProfile) estimatedProfileNameRect(density, statusBarPx, screenWidthPx, flightName)
                 else estimatedHomeNameRect(density, statusBarPx, flightName)
 
+            // Keep reading live bounds for the first ~8% of the flight so a
+            // just-mounted Profile can replace the analytic estimate; after
+            // that freeze so layout noise can't jerk the flight path.
+            val snap = frozenFlight
+            val candidate = FlightGeom(
+                sourceAvatar = liveSourceAvatar,
+                targetAvatar = liveTargetAvatar,
+                sourceName = liveSourceName,
+                targetName = liveTargetName,
+                enteringProfile = enteringProfile,
+            )
+            val geom = if (
+                snap != null &&
+                snap.enteringProfile == enteringProfile &&
+                avatarFlightProgress >= 0.08f
+            ) snap else candidate
+
+            val bothLive =
+                (if (enteringProfile) homeAvatarRect else profileAvatarRect) != null &&
+                (if (enteringProfile) profileAvatarRect else homeAvatarRect) != null
+            androidx.compose.runtime.SideEffect {
+                if (
+                    (bothLive || avatarFlightProgress >= 0.08f) &&
+                    (frozenFlight == null || frozenFlight?.enteringProfile != enteringProfile)
+                ) {
+                    frozenFlight = candidate
+                }
+            }
+
             AvatarFlightOverlay(
                 progress = avatarFlightProgress,
-                sourceAvatar = sourceAvatar,
-                targetAvatar = targetAvatar,
-                sourceName = sourceName,
-                targetName = targetName,
+                sourceAvatar = geom.sourceAvatar,
+                targetAvatar = geom.targetAvatar,
+                sourceName = geom.sourceName,
+                targetName = geom.targetName,
                 sourceFontSp = if (enteringProfile) 19f else 22f,
                 targetFontSp = if (enteringProfile) 22f else 19f,
                 name = flightName,
@@ -778,6 +830,15 @@ private fun CachedTabPager(
     }
 }
 
+/** Frozen start/end geometry for one Home⇄Profile avatar flight. */
+private data class FlightGeom(
+    val sourceAvatar: Rect,
+    val targetAvatar: Rect,
+    val sourceName: Rect,
+    val targetName: Rect,
+    val enteringProfile: Boolean,
+)
+
 /**
  * The single flying avatar+name element for the Home⇄Profile hero flight.
  * There is only ever ONE visual instance on screen: while this overlay is
@@ -803,7 +864,11 @@ private fun AvatarFlightOverlay(
     val avatarRect = lerp(sourceAvatar, targetAvatar, progress)
     val nameRect = lerp(sourceName, targetName, progress)
     val fontSp = sourceFontSp + (targetFontSp - sourceFontSp) * progress
-    val avatarBg = androidx.compose.ui.graphics.lerp(Letify.colors.accent, Letify.colors.accentSoft, progress)
+    // Same gradient disc used on Home and Profile when there is no photo —
+    // keeps the flying letter visually continuous with both endpoints.
+    val avatarBrush = Brush.linearGradient(
+        listOf(Letify.colors.accent, LetifyColors.TilePink),
+    )
 
     Box(
         Modifier
@@ -814,7 +879,7 @@ private fun AvatarFlightOverlay(
                 with(density) { avatarRect.height.toDp() },
             )
             .clip(CircleShape)
-            .background(avatarBg, CircleShape),
+            .background(avatarBrush, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(

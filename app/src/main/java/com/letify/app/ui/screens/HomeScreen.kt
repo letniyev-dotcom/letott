@@ -150,7 +150,7 @@ fun HomeScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(letter, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    if (photoUrl != null) {
+                    if (!photoUrl.isNullOrBlank()) {
                         AsyncImage(
                             model = ImageRequest.Builder(context).data(photoUrl).crossfade(180).build(),
                             contentDescription = null,
@@ -160,6 +160,9 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.width(12.dp))
+                // Name is wrap-content (NOT weight) so boundsInWindow matches the
+                // actual glyph box — otherwise the hero flight starts from a
+                // full-row-wide rect and the name appears to fly in from nowhere.
                 Text(
                     name,
                     color = Letify.colors.text,
@@ -168,11 +171,11 @@ fun HomeScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .weight(1f)
                         .onGloballyPositioned { onNameBoundsChanged(it.boundsInWindow()) }
                         .alpha(if (hideAvatarName) 0f else 1f),
                     textAlign = TextAlign.Start,
                 )
+                Spacer(Modifier.weight(1f))
                 Text(
                     dateShort.replaceFirstChar { it.titlecase(Locale("ru")) },
                     color = Letify.colors.muted,
