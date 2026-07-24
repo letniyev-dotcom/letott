@@ -1,6 +1,7 @@
 package com.letify.app.ui.components
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.letify.app.ui.theme.Letify
 
 /**
  * Default horizontal page padding. Sections opt in via [Modifier.screenHPad].
@@ -58,7 +60,11 @@ fun ScreenScaffold(
             // ElasticOverscroll replaces the system stretch with a damped
             // iOS-style translation: scrolls slide a touch further past the
             // edge and ping back — nothing gets visually deformed.
-            ElasticOverscroll(modifier = Modifier.fillMaxSize()) {
+            ElasticOverscroll(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Letify.colors.bg),
+            ) {
                 Column(
                     Modifier
                         .fillMaxSize()
@@ -76,7 +82,7 @@ fun ScreenScaffold(
             // cheaper, jank-free first frame when the screen slides in.
             val topInset =
                 WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + topPadding
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
                 ElasticOverscroll(modifier = Modifier.fillMaxSize()) {
                     Column(
                         Modifier
@@ -114,7 +120,7 @@ fun ScreenScaffold(
             val topInset =
                 WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + topPadding
 
-            SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
+            SubcomposeLayout(Modifier.fillMaxSize().background(Letify.colors.bg)) { constraints ->
                 val looseW = constraints.copy(minHeight = 0, maxHeight = Int.MAX_VALUE)
 
                 // 1) Measure the pinned header first.

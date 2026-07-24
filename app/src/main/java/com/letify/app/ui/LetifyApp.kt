@@ -731,6 +731,9 @@ private fun CachedTabPager(
                 Box(
                     Modifier
                         .fillMaxSize()
+                        // Opaque page bg — Profile/ScreenScaffold used to be
+                        // transparent, so home bled through during the slide.
+                        .background(Letify.colors.bg)
                         .zIndex(if (tab == activeTo) 1f else 0f)
                         .graphicsLayer {
                             translationX = dx
@@ -752,6 +755,7 @@ private fun CachedTabPager(
             Box(
                 Modifier
                     .fillMaxSize()
+                    .background(Letify.colors.bg)
                     .zIndex(if (tab == activeTo) 1f else 0f)
                     .graphicsLayer {
                         translationX = dx
