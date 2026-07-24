@@ -2,9 +2,12 @@ package com.letify.app.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -106,7 +111,8 @@ fun HomeScreen(
     val sleepCat by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/sleep_cat.json"))
     val weightHand by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/weight_hand.json"))
     val pagerState = rememberPagerState(pageCount = { 2 })
-    val metricsPager = rememberPagerState(pageCount = { 2 })
+    val metricsListState = rememberLazyListState()
+    val metricsSnap = rememberSnapFlingBehavior(metricsListState)
 
     val moments = state.mediaItems.take(3)
     val tasks = state.tasksToday()
@@ -320,7 +326,8 @@ fun HomeScreen(
             }
         }
 
-        // Metrics carousel: page 0 = Питание + Вода, page 1 = Сон + Вес
+        // Metrics strip — one continuous row, equal gaps, scrolls edge-to-edge.
+        // Two cards fit the viewport; peek of the next is natural via LazyRow.
         val sleepEntry = state.sleepLog.maxByOrNull { it.dateKey }
         val sleepMinutes = sleepEntry?.durationMinutes ?: 0
         val sleepProgress = (sleepMinutes.toFloat() / state.sleepGoalMinutes.coerceAtLeast(1))
@@ -333,20 +340,21 @@ fun HomeScreen(
         val weightProgress = (weightDone / weightSpan).coerceIn(0f, 1f)
         val weightLabel = String.format("%.1f кг", state.weight).replace('.', ',')
 
-        Column(Modifier.fillMaxWidth()) {
-            HorizontalPager(
-                state = metricsPager,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-            ) { page ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+        val metricsGap = 10.dp
+        val metricsEdge = 20.dp
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val cardW = (maxWidth - metricsEdge * 2 - metricsGap) / 2
+            Column(Modifier.fillMaxWidth()) {
+                LazyRow(
+                    state = metricsListState,
+                    flingBehavior = metricsSnap,
+                    contentPadding = PaddingValues(horizontal = metricsEdge),
+                    horizontalArrangement = Arrangement.spacedBy(metricsGap),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    if (page == 0) {
+                    item {
                         MetricCard(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.width(cardW),
                             composition = sandwich,
                             title = "Питание",
                             progress = foodProgress,
@@ -354,8 +362,10 @@ fun HomeScreen(
                             color = LetifyColors.Cal,
                             onAdd = onOpenNutrition,
                         )
+                    }
+                    item {
                         MetricCard(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.width(cardW),
                             composition = coke,
                             title = "Вода",
                             progress = waterProgress,
@@ -363,9 +373,10 @@ fun HomeScreen(
                             color = LetifyColors.Water,
                             onAdd = { state.addWater(250, "Вода", "water") },
                         )
-                    } else {
+                    }
+                    item {
                         MetricCard(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.width(cardW),
                             composition = sleepCat,
                             title = "Сон",
                             progress = sleepProgress,
@@ -373,8 +384,10 @@ fun HomeScreen(
                             color = LetifyColors.Purple,
                             onAdd = onAddSleep,
                         )
+                    }
+                    item {
                         MetricCard(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.width(cardW),
                             composition = weightHand,
                             title = "Вес",
                             progress = weightProgress,
@@ -384,22 +397,23 @@ fun HomeScreen(
                         )
                     }
                 }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                repeat(2) { i ->
-                    val on = metricsPager.currentPage == i
-                    Box(
-                        Modifier
-                            .padding(horizontal = 3.dp)
-                            .height(6.dp)
-                            .width(if (on) 16.dp else 6.dp)
-                            .clip(RoundedCornerShape(99.dp))
-                            .background(if (on) Letify.colors.accent else Color.White.copy(alpha = 0.15f)),
-                    )
+                Spacer(Modifier.height(10.dp))
+                val activePair = (metricsListState.firstVisibleItemIndex / 2).coerceIn(0, 1)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    repeat(2) { i ->
+                        val on = activePair == i
+                        Box(
+                            Modifier
+                                .padding(horizontal = 3.dp)
+                                .height(6.dp)
+                                .width(if (on) 16.dp else 6.dp)
+                                .clip(RoundedCornerShape(99.dp))
+                                .background(if (on) Letify.colors.accent else Color.White.copy(alpha = 0.15f)),
+                        )
+                    }
                 }
             }
         }

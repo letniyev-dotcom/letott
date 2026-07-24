@@ -316,9 +316,19 @@ fun LetifyApp() {
     // slide starts, true exactly when it settles (no fixed delay guesswork).
     var tabSettled by remember { mutableStateOf(true) }
 
-    // Home ⇄ Profile is a normal tab push (same driver as every other tab).
-    // No separate hero-flight layer — avatar/name live inside each screen and
-    // move with it, so they can never lag behind the transition.
+    // Home ⇄ Profile hero: avatar+name fly with the SAME progress that drives
+    // the page transition — one Animatable, one frame, no lag between layers.
+    var homeAvatarRect by remember { mutableStateOf<Rect?>(null) }
+    var homeNameRect by remember { mutableStateOf<Rect?>(null) }
+    var profileAvatarRect by remember { mutableStateOf<Rect?>(null) }
+    var profileNameRect by remember { mutableStateOf<Rect?>(null) }
+    val densityForBounds = LocalDensity.current
+    val screenWidthPxForBounds =
+        with(densityForBounds) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+    fun Rect.isOnScreen(): Boolean {
+        val cx = (left + right) * 0.5f
+        return cx >= 0f && cx <= screenWidthPxForBounds
+    }
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         OverlayHost(parallaxProgress = parallax) {
@@ -334,12 +344,30 @@ fun LetifyApp() {
                     order = state.navbarOrder,
                     onSettledChange = { tabSettled = it },
                     modifier = Modifier.fillMaxSize(),
-                ) { tab ->
-                    // Wrap each tab in a SaveableStateProvider keyed by the tab.
-                    // CachedTabPager keeps every visited tab COMPOSED (parked
-                    // off-screen), so there's no dispose+rebuild on switch; this
-                    // provider just adds rememberSaveable survival across process
-                    // death / config changes (scroll offsets, expanded sections…).
+                    hero = { t ->
+                        val density = LocalDensity.current
+                        val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
+                        val screenW =
+                            with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+                        val name = state.userName.ifBlank { "друг" }
+                        AvatarFlightOverlay(
+                            progress = t,
+                            sourceAvatar = homeAvatarRect
+                                ?: estimatedHomeAvatarRect(density, statusBarPx),
+                            targetAvatar = profileAvatarRect
+                                ?: estimatedProfileAvatarRect(density, statusBarPx, screenW),
+                            sourceName = homeNameRect
+                                ?: estimatedHomeNameRect(density, statusBarPx, name),
+                            targetName = profileNameRect
+                                ?: estimatedProfileNameRect(density, statusBarPx, screenW, name),
+                            sourceFontSp = 19f,
+                            targetFontSp = 22f,
+                            name = name,
+                            photoUrl = state.telegramUser?.photoUrl,
+                            letter = name.firstOrNull()?.uppercase() ?: "?",
+                        )
+                    },
+                ) { tab, hideHero ->
                     tabStateHolder.SaveableStateProvider(tab.name) {
                         when (tab) {
                             Tab.Home -> HomeScreen(
@@ -350,6 +378,9 @@ fun LetifyApp() {
                                 onOpenProfile = { state.currentTab = Tab.Profile },
                                 onOpenPlan = { state.currentTab = Tab.Plan },
                                 onOpenMoments = { push(AddOverlay.Media) },
+                                hideAvatarName = hideHero,
+                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) homeAvatarRect = r },
+                                onNameBoundsChanged = { r -> if (r.isOnScreen()) homeNameRect = r },
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -376,6 +407,9 @@ fun LetifyApp() {
                                 onQuickCamera = { openCamera() },
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
+                                hideAvatarName = hideHero,
+                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) profileAvatarRect = r },
+                                onNameBoundsChanged = { r -> if (r.isOnScreen()) profileNameRect = r },
                             )
                         }
                     }
@@ -639,7 +673,9 @@ private fun CachedTabPager(
     order: List<Tab>,
     onSettledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    content: @Composable (Tab) -> Unit,
+    /** Absolute hero progress 0=home … 1=profile. Same Animatable as the page. */
+    hero: (@Composable (t: Float) -> Unit)? = null,
+    content: @Composable (tab: Tab, hideHero: Boolean) -> Unit,
 ) {
     val visited = remember { mutableStateListOf<Tab>() }
     if (current !in visited) visited.add(current)
@@ -654,8 +690,6 @@ private fun CachedTabPager(
             toTab = current
             onSettledChange(false)
             progress.snapTo(0f)
-            // Slightly longer ease for Home⇄Profile so the whole screen
-            // (including avatar/name that live on it) glides as one piece.
             val isProfilePair =
                 (fromTab == Tab.Home && toTab == Tab.Profile) ||
                 (fromTab == Tab.Profile && toTab == Tab.Home)
@@ -678,13 +712,47 @@ private fun CachedTabPager(
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat()
         val p = progress.value
+        val isAvatarPair =
+            (fromTab == Tab.Home && toTab == Tab.Profile) ||
+            (fromTab == Tab.Profile && toTab == Tab.Home)
+        val settledHome = fromTab == Tab.Home && toTab == Tab.Home
+        val settledProfile = fromTab == Tab.Profile && toTab == Tab.Profile
+        val showHero = isAvatarPair || settledHome || settledProfile
+        val heroT = when {
+            isAvatarPair && toTab == Tab.Profile -> p
+            isAvatarPair && toTab == Tab.Home -> 1f - p
+            settledProfile -> 1f
+            else -> 0f
+        }
+
         visited.forEach { tab ->
             val parked = tab != toTab && tab != fromTab
+            if (isAvatarPair && !parked) {
+                // Stay in place (dx=0) so bounds stay valid. Incoming has solid
+                // bg (no see-through); content fades with the same p as the hero.
+                val incoming = tab == toTab
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .zIndex(if (incoming) 1f else 0f)
+                        .then(if (incoming) Modifier.background(Letify.colors.bg) else Modifier),
+                ) {
+                    if (incoming) {
+                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = p }) {
+                            content(tab, true)
+                        }
+                    } else {
+                        content(tab, true)
+                    }
+                }
+                return@forEach
+            }
             val dx = when (tab) {
                 toTab -> (1f - p) * dir * w
                 fromTab -> -p * dir * w
                 else -> w
             }
+            val hide = showHero && (tab == Tab.Home || tab == Tab.Profile)
             Box(
                 Modifier
                     .fillMaxSize()
@@ -695,8 +763,126 @@ private fun CachedTabPager(
                         clip = true
                     },
             ) {
-                content(tab)
+                content(tab, hide)
+            }
+        }
+
+        if (showHero && hero != null) {
+            Box(Modifier.fillMaxSize().zIndex(20f)) {
+                hero(heroT)
             }
         }
     }
+}
+
+@Composable
+private fun AvatarFlightOverlay(
+    progress: Float,
+    sourceAvatar: Rect,
+    targetAvatar: Rect,
+    sourceName: Rect,
+    targetName: Rect,
+    sourceFontSp: Float,
+    targetFontSp: Float,
+    name: String,
+    photoUrl: String?,
+    letter: String,
+) {
+    val density = LocalDensity.current
+    val context = LocalContext.current
+    val avatarRect = lerp(sourceAvatar, targetAvatar, progress)
+    val nameRect = lerp(sourceName, targetName, progress)
+    val fontSp = sourceFontSp + (targetFontSp - sourceFontSp) * progress
+    val avatarBrush = Brush.linearGradient(
+        listOf(Letify.colors.accent, LetifyColors.TilePink),
+    )
+
+    Box(
+        Modifier
+            .zIndex(45f)
+            .offset { IntOffset(avatarRect.left.roundToInt(), avatarRect.top.roundToInt()) }
+            .size(
+                with(density) { avatarRect.width.toDp() },
+                with(density) { avatarRect.height.toDp() },
+            )
+            .clip(CircleShape)
+            .background(avatarBrush, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            letter,
+            color = Color.White,
+            fontSize = with(density) { (avatarRect.width * 0.38f).toSp() },
+            fontWeight = FontWeight.Bold,
+        )
+        if (!photoUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(photoUrl).crossfade(false).build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
+    }
+
+    Box(
+        Modifier
+            .zIndex(45f)
+            .offset { IntOffset(nameRect.left.roundToInt(), nameRect.top.roundToInt()) }
+            .size(
+                with(density) { nameRect.width.toDp() },
+                with(density) { nameRect.height.toDp() },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            name,
+            color = Letify.colors.text,
+            fontSize = fontSp.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
+}
+
+private fun estimatedHomeAvatarRect(density: Density, statusBarPx: Float): Rect {
+    val left = with(density) { 20.dp.toPx() }
+    val top = statusBarPx + with(density) { 16.dp.toPx() }
+    val size = with(density) { 34.dp.toPx() }
+    return Rect(left, top, left + size, top + size)
+}
+
+private fun estimatedHomeNameRect(density: Density, statusBarPx: Float, name: String): Rect {
+    val avatarTop = statusBarPx + with(density) { 16.dp.toPx() }
+    val avatarSize = with(density) { 34.dp.toPx() }
+    val centerY = avatarTop + avatarSize / 2f
+    val left = with(density) { 66.dp.toPx() }
+    val fontPx = with(density) { 19.sp.toPx() }
+    val height = fontPx * 1.25f
+    val width = name.length.coerceAtLeast(1) * fontPx * 0.55f
+    return Rect(left, centerY - height / 2f, left + width, centerY + height / 2f)
+}
+
+private fun estimatedProfileAvatarRect(density: Density, statusBarPx: Float, screenWidthPx: Float): Rect {
+    val top = statusBarPx + with(density) { 58.dp.toPx() }
+    val size = with(density) { 108.dp.toPx() }
+    val left = (screenWidthPx - size) / 2f
+    return Rect(left, top, left + size, top + size)
+}
+
+private fun estimatedProfileNameRect(
+    density: Density,
+    statusBarPx: Float,
+    screenWidthPx: Float,
+    name: String,
+): Rect {
+    val avatarTop = statusBarPx + with(density) { 58.dp.toPx() }
+    val avatarSize = with(density) { 108.dp.toPx() }
+    val top = avatarTop + avatarSize + with(density) { 10.dp.toPx() }
+    val fontPx = with(density) { 22.sp.toPx() }
+    val height = fontPx * 1.25f
+    val width = name.length.coerceAtLeast(1) * fontPx * 0.55f
+    val centerX = screenWidthPx / 2f
+    return Rect(centerX - width / 2f, top, centerX + width / 2f, top + height)
 }
