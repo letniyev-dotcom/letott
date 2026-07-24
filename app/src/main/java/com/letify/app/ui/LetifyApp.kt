@@ -731,7 +731,27 @@ private fun CachedTabPager(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .zIndex(if (tab == activeTo) 1f else 0f)
+                        // Profile is ALWAYS the foreground layer of this pair —
+                        // it's the one that travels the full screen width (dx up
+                        // to ±w), while Home only ever does the small `parallax`
+                        // (0.28×w) shift as the receding/entering backdrop. That
+                        // asymmetry is the whole point of the hero effect, so the
+                        // z-order must match it in BOTH directions.
+                        //
+                        // The previous `zIndex(if (tab == activeTo) 1f else 0f)`
+                        // instead put whichever tab was ARRIVING on top. That's
+                        // right by coincidence when opening (Home→Profile,
+                        // activeTo == Profile), but on CLOSE (Profile→Home,
+                        // activeTo == Home) it put Home — still doing its small
+                        // parallax slide — ABOVE the exiting Profile. Since Home
+                        // is full-width too, it visually painted over the tail
+                        // end of Profile's slide-out in the overlap region: two
+                        // layers moving at different speeds fighting for the same
+                        // pixels. That's exactly the "second identical screen
+                        // sliding behind it" + glitchy-close the user saw — open
+                        // looked fine only because the direction happened to line
+                        // up there.
+                        .zIndex(if (tab == Tab.Profile) 1f else 0f)
                         .graphicsLayer {
                             translationX = dx
                             clip = true
