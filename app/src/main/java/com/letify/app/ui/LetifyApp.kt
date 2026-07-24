@@ -753,7 +753,7 @@ private fun CachedTabPager(
                             clip = true
                         },
                 ) {
-                    content(tab, hideHero = true)
+                    content(tab, true)
                 }
                 return@forEach
             }
@@ -775,7 +775,7 @@ private fun CachedTabPager(
                         clip = true
                     },
             ) {
-                content(tab, hideHero = hide)
+                content(tab, hide)
             }
         }
 
