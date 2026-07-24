@@ -100,6 +100,9 @@ import kotlin.math.roundToInt
 // so the bottom-tab swap and the indicator glide on one consistent motion.
 private val TabPushEasing = CubicBezierEasing(0.32f, 0.72f, 0.0f, 1.0f)
 private const val TabPushMs = 320
+// Home⇄Profile hero: longer + softer so the flight feels like a glide, not a snap.
+private val HeroFlightEasing = CubicBezierEasing(0.22f, 1.0f, 0.36f, 1.0f)
+private const val HeroFlightMs = 480
 
 // Smooth decelerate for the camera slide-up from bottom.
 private val CameraSlideEasing = CubicBezierEasing(0.22f, 1.0f, 0.36f, 1.0f)
@@ -313,25 +316,9 @@ fun LetifyApp() {
     // slide starts, true exactly when it settles (no fixed delay guesswork).
     var tabSettled by remember { mutableStateOf(true) }
 
-    // ── Single hero identity (Home ⇄ Profile) ─────────────────────────────
-    //
-    // There is exactly ONE composable that ever paints the avatar+name.
-    // Home and Profile only reserve layout slots (invisible placeholders) and
-    // report their bounds. Absolute progress: 0 = home layout, 1 = profile.
-    // No overlay-copy, no dual draw, no blink.
-    var homeAvatarRect by remember { mutableStateOf<Rect?>(null) }
-    var homeNameRect by remember { mutableStateOf<Rect?>(null) }
-    var profileAvatarRect by remember { mutableStateOf<Rect?>(null) }
-    var profileNameRect by remember { mutableStateOf<Rect?>(null) }
-
-    val densityForBounds = LocalDensity.current
-    val screenWidthPxForBounds =
-        with(densityForBounds) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
-
-    fun Rect.isOnScreen(): Boolean {
-        val cx = (left + right) * 0.5f
-        return cx >= 0f && cx <= screenWidthPxForBounds
-    }
+    // Home ⇄ Profile is a normal tab push (same driver as every other tab).
+    // No separate hero-flight layer — avatar/name live inside each screen and
+    // move with it, so they can never lag behind the transition.
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         OverlayHost(parallaxProgress = parallax) {
@@ -347,37 +334,7 @@ fun LetifyApp() {
                     order = state.navbarOrder,
                     onSettledChange = { tabSettled = it },
                     modifier = Modifier.fillMaxSize(),
-                    // Single avatar+name instance. `t` is absolute: 0=home, 1=profile.
-                    hero = { t ->
-                        val density = LocalDensity.current
-                        val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
-                        val screenWidthPx =
-                            with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
-                        val flightName = state.userName.ifBlank { "друг" }
-
-                        val homeA = homeAvatarRect
-                            ?: estimatedHomeAvatarRect(density, statusBarPx)
-                        val profileA = profileAvatarRect
-                            ?: estimatedProfileAvatarRect(density, statusBarPx, screenWidthPx)
-                        val homeN = homeNameRect
-                            ?: estimatedHomeNameRect(density, statusBarPx, flightName)
-                        val profileN = profileNameRect
-                            ?: estimatedProfileNameRect(density, statusBarPx, screenWidthPx, flightName)
-
-                        AvatarFlightOverlay(
-                            progress = t,
-                            sourceAvatar = homeA,
-                            targetAvatar = profileA,
-                            sourceName = homeN,
-                            targetName = profileN,
-                            sourceFontSp = 19f,
-                            targetFontSp = 22f,
-                            name = flightName,
-                            photoUrl = state.telegramUser?.photoUrl,
-                            letter = flightName.firstOrNull()?.uppercase() ?: "?",
-                        )
-                    },
-                ) { tab, hideHero ->
+                ) { tab ->
                     // Wrap each tab in a SaveableStateProvider keyed by the tab.
                     // CachedTabPager keeps every visited tab COMPOSED (parked
                     // off-screen), so there's no dispose+rebuild on switch; this
@@ -393,9 +350,6 @@ fun LetifyApp() {
                                 onOpenProfile = { state.currentTab = Tab.Profile },
                                 onOpenPlan = { state.currentTab = Tab.Plan },
                                 onOpenMoments = { push(AddOverlay.Media) },
-                                hideAvatarName = hideHero,
-                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) homeAvatarRect = r },
-                                onNameBoundsChanged = { r -> if (r.isOnScreen()) homeNameRect = r },
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -422,9 +376,6 @@ fun LetifyApp() {
                                 onQuickCamera = { openCamera() },
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
-                                hideAvatarName = hideHero,
-                                onAvatarBoundsChanged = { r -> if (r.isOnScreen()) profileAvatarRect = r },
-                                onNameBoundsChanged = { r -> if (r.isOnScreen()) profileNameRect = r },
                             )
                         }
                     }
@@ -688,10 +639,7 @@ private fun CachedTabPager(
     order: List<Tab>,
     onSettledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    // Single avatar+name painter. `t` is absolute: 0 = home slot, 1 = profile slot.
-    // Drawn in the same frame as hideHero=true so nothing is ever painted twice.
-    hero: (@Composable (t: Float) -> Unit)? = null,
-    content: @Composable (tab: Tab, hideHero: Boolean) -> Unit,
+    content: @Composable (Tab) -> Unit,
 ) {
     val visited = remember { mutableStateListOf<Tab>() }
     if (current !in visited) visited.add(current)
@@ -706,10 +654,19 @@ private fun CachedTabPager(
             toTab = current
             onSettledChange(false)
             progress.snapTo(0f)
-            progress.animateTo(1f, animationSpec = tween(TabPushMs, easing = TabPushEasing))
+            // Slightly longer ease for Home⇄Profile so the whole screen
+            // (including avatar/name that live on it) glides as one piece.
+            val isProfilePair =
+                (fromTab == Tab.Home && toTab == Tab.Profile) ||
+                (fromTab == Tab.Profile && toTab == Tab.Home)
+            progress.animateTo(
+                1f,
+                animationSpec = tween(
+                    durationMillis = if (isProfilePair) HeroFlightMs else TabPushMs,
+                    easing = if (isProfilePair) HeroFlightEasing else TabPushEasing,
+                ),
+            )
             onSettledChange(true)
-            // Collapse: the screen we slid away from is now just another parked
-            // (alpha-0) cached tab.
             fromTab = current
         }
     }
@@ -721,50 +678,13 @@ private fun CachedTabPager(
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat()
         val p = progress.value
-        val isAvatarPair =
-            (fromTab == Tab.Home && toTab == Tab.Profile) ||
-            (fromTab == Tab.Profile && toTab == Tab.Home)
-
-        // Absolute hero position: 0 = home layout, 1 = profile layout.
-        // Settled Home/Profile also own the hero so it never "pops in" from a
-        // screen-local draw.
-        val settledHome = fromTab == Tab.Home && toTab == Tab.Home
-        val settledProfile = fromTab == Tab.Profile && toTab == Tab.Profile
-        val showHero = isAvatarPair || settledHome || settledProfile
-        val heroT = when {
-            isAvatarPair && toTab == Tab.Profile -> p          // 0 → 1
-            isAvatarPair && toTab == Tab.Home -> 1f - p        // 1 → 0
-            settledProfile -> 1f
-            else -> 0f // settledHome or unused
-        }
-
         visited.forEach { tab ->
             val parked = tab != toTab && tab != fromTab
-            if (isAvatarPair && !parked) {
-                // Home⇄Profile: both stay at rest (dx=0) so slots stay measurable.
-                // Outgoing opaque underneath, incoming fades in — no double-UI mud.
-                // hideHero=true: screens only keep empty layout slots.
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .zIndex(if (tab == toTab) 1f else 0f)
-                        .graphicsLayer {
-                            alpha = if (tab == toTab) p else 1f
-                            clip = true
-                        },
-                ) {
-                    content(tab, true)
-                }
-                return@forEach
-            }
             val dx = when (tab) {
                 toTab -> (1f - p) * dir * w
                 fromTab -> -p * dir * w
                 else -> w
             }
-            // On Home/Profile while the root hero is showing, keep slots empty.
-            // On Plan transitions Home draws its own avatar (slides away with it).
-            val hide = showHero && (tab == Tab.Home || tab == Tab.Profile)
             Box(
                 Modifier
                     .fillMaxSize()
@@ -775,143 +695,8 @@ private fun CachedTabPager(
                         clip = true
                     },
             ) {
-                content(tab, hide)
-            }
-        }
-
-        if (showHero && hero != null) {
-            Box(Modifier.fillMaxSize().zIndex(20f)) {
-                hero(heroT)
+                content(tab)
             }
         }
     }
-}
-
-/**
- * The single flying avatar+name element for the Home⇄Profile hero flight.
- * There is only ever ONE visual instance on screen: while this overlay is
- * active, both real headers are hidden (see `hideAvatarName` in HomeScreen /
- * ProfileScreen) and this draws in their place, interpolating between the
- * two screens' actual on-screen rects.
- */
-@Composable
-private fun AvatarFlightOverlay(
-    progress: Float,
-    sourceAvatar: Rect,
-    targetAvatar: Rect,
-    sourceName: Rect,
-    targetName: Rect,
-    sourceFontSp: Float,
-    targetFontSp: Float,
-    name: String,
-    photoUrl: String?,
-    letter: String,
-) {
-    val density = LocalDensity.current
-    val context = LocalContext.current
-    val avatarRect = lerp(sourceAvatar, targetAvatar, progress)
-    val nameRect = lerp(sourceName, targetName, progress)
-    val fontSp = sourceFontSp + (targetFontSp - sourceFontSp) * progress
-    // Same gradient disc used on Home and Profile when there is no photo —
-    // keeps the flying letter visually continuous with both endpoints.
-    val avatarBrush = Brush.linearGradient(
-        listOf(Letify.colors.accent, LetifyColors.TilePink),
-    )
-
-    Box(
-        Modifier
-            .zIndex(45f)
-            .offset { IntOffset(avatarRect.left.roundToInt(), avatarRect.top.roundToInt()) }
-            .size(
-                with(density) { avatarRect.width.toDp() },
-                with(density) { avatarRect.height.toDp() },
-            )
-            .clip(CircleShape)
-            .background(avatarBrush, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            letter,
-            color = Color.White,
-            fontSize = with(density) { (avatarRect.width * 0.38f).toSp() },
-            fontWeight = FontWeight.Bold,
-        )
-        if (!photoUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = ImageRequest.Builder(context).data(photoUrl).crossfade(false).build(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        }
-    }
-
-    Box(
-        Modifier
-            .zIndex(45f)
-            .offset { IntOffset(nameRect.left.roundToInt(), nameRect.top.roundToInt()) }
-            .size(
-                with(density) { nameRect.width.toDp() },
-                with(density) { nameRect.height.toDp() },
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            name,
-            color = Letify.colors.text,
-            fontSize = fontSp.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-        )
-    }
-}
-
-// ── Analytic fallback rects ────────────────────────────────────────────────
-//
-// Used ONLY until the real header has been measured at least once (i.e. the
-// very first Home→Profile flight, before Profile has ever been laid out).
-// Every constant below mirrors the actual padding/size used in HomeScreen's
-// header row and ProfileScreen's avatar/name block — keep them in sync if
-// those layouts change.
-
-private fun estimatedHomeAvatarRect(density: Density, statusBarPx: Float): Rect {
-    val left = with(density) { 20.dp.toPx() }
-    val top = statusBarPx + with(density) { 16.dp.toPx() } // 6dp column pad + 10dp row pad
-    val size = with(density) { 34.dp.toPx() }
-    return Rect(left, top, left + size, top + size)
-}
-
-private fun estimatedHomeNameRect(density: Density, statusBarPx: Float, name: String): Rect {
-    val avatarTop = statusBarPx + with(density) { 16.dp.toPx() }
-    val avatarSize = with(density) { 34.dp.toPx() }
-    val centerY = avatarTop + avatarSize / 2f
-    val left = with(density) { 66.dp.toPx() }
-    val fontPx = with(density) { 19.sp.toPx() }
-    val height = fontPx * 1.25f
-    val width = name.length.coerceAtLeast(1) * fontPx * 0.55f
-    return Rect(left, centerY - height / 2f, left + width, centerY + height / 2f)
-}
-
-private fun estimatedProfileAvatarRect(density: Density, statusBarPx: Float, screenWidthPx: Float): Rect {
-    val top = statusBarPx + with(density) { 58.dp.toPx() } // 56dp header row + 2dp avatar-box pad
-    val size = with(density) { 108.dp.toPx() }
-    val left = (screenWidthPx - size) / 2f
-    return Rect(left, top, left + size, top + size)
-}
-
-private fun estimatedProfileNameRect(
-    density: Density,
-    statusBarPx: Float,
-    screenWidthPx: Float,
-    name: String,
-): Rect {
-    val avatarTop = statusBarPx + with(density) { 58.dp.toPx() }
-    val avatarSize = with(density) { 108.dp.toPx() }
-    val top = avatarTop + avatarSize + with(density) { 10.dp.toPx() }
-    val fontPx = with(density) { 22.sp.toPx() }
-    val height = fontPx * 1.25f
-    val width = name.length.coerceAtLeast(1) * fontPx * 0.55f
-    val centerX = screenWidthPx / 2f
-    return Rect(centerX - width / 2f, top, centerX + width / 2f, top + height)
 }

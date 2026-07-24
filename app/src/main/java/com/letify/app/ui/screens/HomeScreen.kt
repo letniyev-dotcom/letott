@@ -103,7 +103,10 @@ fun HomeScreen(
 
     val sandwich by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/sandwich.json"))
     val coke by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/coke.json"))
+    val sleepCat by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/sleep_cat.json"))
+    val weightHand by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/weight_hand.json"))
     val pagerState = rememberPagerState(pageCount = { 2 })
+    val metricsPager = rememberPagerState(pageCount = { 2 })
 
     val moments = state.mediaItems.take(3)
     val tasks = state.tasksToday()
@@ -317,60 +320,91 @@ fun HomeScreen(
             }
         }
 
-        // Food + Water
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            MetricCard(
-                modifier = Modifier.weight(1f),
-                composition = sandwich,
-                title = "Питание",
-                progress = foodProgress,
-                label = "${state.kcal} из ${state.kcalTarget} ккал",
-                color = LetifyColors.Cal,
-                onAdd = onOpenNutrition,
-            )
-            MetricCard(
-                modifier = Modifier.weight(1f),
-                composition = coke,
-                title = "Вода",
-                progress = waterProgress,
-                label = formatWater(state.waterMl, state.waterTarget),
-                color = LetifyColors.Water,
-                onAdd = { state.addWater(250, "Вода", "water") },
-            )
-        }
+        // Metrics carousel: page 0 = Питание + Вода, page 1 = Сон + Вес
+        val sleepEntry = state.sleepLog.maxByOrNull { it.dateKey }
+        val sleepMinutes = sleepEntry?.durationMinutes ?: 0
+        val sleepProgress = (sleepMinutes.toFloat() / state.sleepGoalMinutes.coerceAtLeast(1))
+            .coerceIn(0f, 1f)
+        val sleepLabel = if (sleepEntry == null) "нет записи"
+        else "${sleepMinutes / 60} ч ${sleepMinutes % 60} м"
 
-        Spacer(Modifier.weight(1f))
+        val weightSpan = kotlin.math.abs(state.weightStart - state.weightGoal).coerceAtLeast(0.1f)
+        val weightDone = kotlin.math.abs(state.weightStart - state.weight)
+        val weightProgress = (weightDone / weightSpan).coerceIn(0f, 1f)
+        val weightLabel = String.format("%.1f кг", state.weight).replace('.', ',')
 
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text("Сон", color = Letify.colors.muted, style = Letify.typography.bodySmall)
-                Spacer(Modifier.height(4.dp))
-                val sleep = state.sleepLog.maxByOrNull { it.dateKey }
-                val sleepText = sleep?.let { "${it.durationMinutes / 60} ч ${it.durationMinutes % 60} м" } ?: "—"
-                NoFeedbackButton(onClick = onAddSleep) {
-                    Text(sleepText, color = Letify.colors.text, style = Letify.typography.titleMedium)
+        Column(Modifier.fillMaxWidth()) {
+            HorizontalPager(
+                state = metricsPager,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+            ) { page ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (page == 0) {
+                        MetricCard(
+                            modifier = Modifier.weight(1f),
+                            composition = sandwich,
+                            title = "Питание",
+                            progress = foodProgress,
+                            label = "${state.kcal} из ${state.kcalTarget} ккал",
+                            color = LetifyColors.Cal,
+                            onAdd = onOpenNutrition,
+                        )
+                        MetricCard(
+                            modifier = Modifier.weight(1f),
+                            composition = coke,
+                            title = "Вода",
+                            progress = waterProgress,
+                            label = formatWater(state.waterMl, state.waterTarget),
+                            color = LetifyColors.Water,
+                            onAdd = { state.addWater(250, "Вода", "water") },
+                        )
+                    } else {
+                        MetricCard(
+                            modifier = Modifier.weight(1f),
+                            composition = sleepCat,
+                            title = "Сон",
+                            progress = sleepProgress,
+                            label = sleepLabel,
+                            color = LetifyColors.Purple,
+                            onAdd = onAddSleep,
+                        )
+                        MetricCard(
+                            modifier = Modifier.weight(1f),
+                            composition = weightHand,
+                            title = "Вес",
+                            progress = weightProgress,
+                            label = weightLabel,
+                            color = LetifyColors.Orange,
+                            onAdd = onAddWeight,
+                        )
+                    }
                 }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Вес", color = Letify.colors.muted, style = Letify.typography.bodySmall)
-                Spacer(Modifier.height(4.dp))
-                NoFeedbackButton(onClick = onAddWeight) {
-                    Text(
-                        String.format("%.1f кг", state.weight).replace('.', ','),
-                        color = Letify.colors.text,
-                        style = Letify.typography.titleMedium,
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                repeat(2) { i ->
+                    val on = metricsPager.currentPage == i
+                    Box(
+                        Modifier
+                            .padding(horizontal = 3.dp)
+                            .height(6.dp)
+                            .width(if (on) 16.dp else 6.dp)
+                            .clip(RoundedCornerShape(99.dp))
+                            .background(if (on) Letify.colors.accent else Color.White.copy(alpha = 0.15f)),
                     )
                 }
             }
         }
+
+        Spacer(Modifier.weight(1f))
     }
 }
 
