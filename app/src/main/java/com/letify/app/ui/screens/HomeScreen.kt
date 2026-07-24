@@ -28,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -38,8 +37,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -147,8 +147,8 @@ fun HomeScreen(
                 Box(
                     Modifier
                         .size(34.dp)
-                        .onGloballyPositioned { onAvatarBoundsChanged(it.boundsInWindow()) }
-                        .alpha(if (hideAvatarName) 0f else 1f)
+                        .onGloballyPositioned { onAvatarBoundsChanged(it.boundsInRoot()) }
+                        .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f }
                         .clip(CircleShape)
                         .background(
                             Brush.linearGradient(listOf(Letify.colors.accent, LetifyColors.TilePink)),
@@ -178,15 +178,15 @@ fun HomeScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .onGloballyPositioned { onNameBoundsChanged(it.boundsInWindow()) }
-                        .alpha(if (hideAvatarName) 0f else 1f),
+                        .onGloballyPositioned { onNameBoundsChanged(it.boundsInRoot()) }
+                        .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f },
                     textAlign = TextAlign.Start,
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
                     dateShort.replaceFirstChar { it.titlecase(Locale("ru")) },
                     color = Letify.colors.muted,
-                    style = Letify.typography.bodySmall,
+                    style = Letify.typography.bodyMedium,
                 )
             }
         }
@@ -199,7 +199,7 @@ fun HomeScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             DayRing(overall, 166.dp)
                             Spacer(Modifier.height(14.dp))
-                            Text("прогресс за день", color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                            Text("прогресс за день", color = Letify.colors.muted, style = Letify.typography.bodyMedium)
                         }
                     } else {
                         Column(
@@ -216,14 +216,15 @@ fun HomeScreen(
                                     .padding(horizontal = 12.dp, vertical = 5.dp),
                             )
                             Spacer(Modifier.height(14.dp))
+                            // Same 14sp as «Цель достигнута» in profile
                             Text(
                                 "Выпей воды — до цели осталось пол-литра. После ужина лучше лёгкая прогулка.",
                                 color = Letify.colors.text,
-                                style = Letify.typography.titleSmall,
+                                style = Letify.typography.bodyMedium,
                                 textAlign = TextAlign.Center,
                             )
                             Spacer(Modifier.height(10.dp))
-                            Text("советы появятся здесь", color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                            Text("советы появятся здесь", color = Letify.colors.muted, style = Letify.typography.bodyMedium)
                         }
                     }
                 }
@@ -265,13 +266,16 @@ fun HomeScreen(
             ) {
                 MomentsStack(moments)
                 Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Моменты", color = Letify.colors.text, style = Letify.typography.titleSmall)
+                Column(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("Моменты", color = Letify.colors.text, style = Letify.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Text(
                         if (moments.isEmpty()) "добавь первый"
                         else "${state.mediaItems.size} в ленте",
                         color = Letify.colors.muted,
-                        style = Letify.typography.bodySmall,
+                        style = Letify.typography.bodyMedium,
                     )
                 }
                 Text("›", color = Letify.colors.muted, style = Letify.typography.titleMedium)
@@ -297,7 +301,8 @@ fun HomeScreen(
                     Text(
                         "План",
                         color = Letify.colors.text,
-                        style = Letify.typography.titleSmall,
+                        style = Letify.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
@@ -311,8 +316,8 @@ fun HomeScreen(
                     )
                 }
                 if (planItems.isEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("нет задач", color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    Text("нет задач", color = Letify.colors.muted, style = Letify.typography.bodyMedium)
                 } else {
                     Spacer(Modifier.height(9.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -419,7 +424,7 @@ private fun PlanRow(task: TaskItem, isCurrent: Boolean, nowMin: Int, dateKey: St
         Text(
             task.name,
             color = if (isCurrent) Letify.colors.text else Letify.colors.muted,
-            style = Letify.typography.bodySmall,
+            style = Letify.typography.bodyMedium,
             fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -429,7 +434,7 @@ private fun PlanRow(task: TaskItem, isCurrent: Boolean, nowMin: Int, dateKey: St
         Text(
             meta,
             color = if (live) task.color else Letify.colors.muted,
-            style = Letify.typography.labelSmall,
+            style = Letify.typography.bodyMedium,
         )
     }
 }
@@ -495,7 +500,7 @@ private fun DayRing(progress: Float, size: Dp) {
             drawArc(track, -90f, 360f, false, origin, arc, style = Stroke(sw, cap = StrokeCap.Round))
             drawArc(accent, -90f, 360f * p, false, origin, arc, style = Stroke(sw, cap = StrokeCap.Round))
         }
-        Text("${(p * 100).toInt()}%", color = Letify.colors.text, style = Letify.typography.displayLarge, fontSize = 33.sp)
+        Text("${(p * 100).toInt()}%", color = Letify.colors.text, style = Letify.typography.displayLarge, fontSize = 36.sp)
     }
 }
 
@@ -522,7 +527,13 @@ private fun MetricCard(
                 modifier = Modifier.size(36.dp),
             )
             Spacer(Modifier.width(9.dp))
-            Text(title, color = Letify.colors.text, style = Letify.typography.titleSmall, maxLines = 1)
+            Text(
+                title,
+                color = Letify.colors.text,
+                style = Letify.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
         }
         Spacer(Modifier.height(14.dp))
         Box(
@@ -540,7 +551,7 @@ private fun MetricCard(
             )
         }
         Spacer(Modifier.height(9.dp))
-        Text(label, color = Letify.colors.muted, style = Letify.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, color = Letify.colors.muted, style = Letify.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(12.dp))
         NoFeedbackButton(onClick = onAdd, modifier = Modifier.fillMaxWidth()) {
             Box(

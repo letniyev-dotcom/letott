@@ -101,7 +101,7 @@ import kotlin.math.roundToInt
 private val TabPushEasing = CubicBezierEasing(0.32f, 0.72f, 0.0f, 1.0f)
 private const val TabPushMs = 320
 // Home⇄Profile hero: longer + softer so the flight feels like a glide, not a snap.
-private val HeroFlightEasing = CubicBezierEasing(0.22f, 1.0f, 0.36f, 1.0f)
+private val HeroFlightEasing = CubicBezierEasing(0.16f, 1.0f, 0.3f, 1.0f)
 private const val HeroFlightMs = 520
 
 // Smooth decelerate for the camera slide-up from bottom.
@@ -721,6 +721,23 @@ private fun CachedTabPager(
     // before LaunchedEffect runs — prevents the end-jump blink.
     var profileFlying by remember { mutableStateOf(false) }
 
+    val pending = current != toTab
+    val pendingIsProfile =
+        pending && (
+            (toTab == Tab.Home && current == Tab.Profile) ||
+            (toTab == Tab.Profile && current == Tab.Home)
+        )
+
+    // Capture flight geometry + flag on the same frame the user taps, before
+    // LaunchedEffect — so the first drawn frame already has a frozen path and
+    // hero at t=0 (no jump-to-end / snap-back blink).
+    androidx.compose.runtime.SideEffect {
+        if (pendingIsProfile && !profileFlying) {
+            profileFlying = true
+            onProfileFlightStart()
+        }
+    }
+
     LaunchedEffect(current) {
         if (current != toTab) {
             val prev = toTab
@@ -730,7 +747,7 @@ private fun CachedTabPager(
                 (prev == Tab.Profile && next == Tab.Home)
             fromTab = prev
             toTab = next
-            if (isProfilePair) {
+            if (isProfilePair && !profileFlying) {
                 profileFlying = true
                 onProfileFlightStart()
             }
@@ -746,18 +763,6 @@ private fun CachedTabPager(
             profileFlying = false
             onSettledChange(true)
             fromTab = current
-        }
-    }
-
-    // Kick profileFlying on the first frame (before LE) so hero starts at t=0.
-    val pending = current != toTab
-    if (pending) {
-        val pair =
-            (toTab == Tab.Home && current == Tab.Profile) ||
-            (toTab == Tab.Profile && current == Tab.Home)
-        if (pair && !profileFlying) {
-            // Side-effect free flag via remembered write is not allowed during
-            // composition; profileFlying is set in LE. Use pending+pair for draw.
         }
     }
 
@@ -783,19 +788,27 @@ private fun CachedTabPager(
         visited.forEach { tab ->
             val parked = tab != activeTo && tab != activeFrom
             if (isAvatarPair && !parked) {
-                // Both screens stay put. Outgoing full opacity underneath.
-                // Incoming: ONE layer (bg + content) fades with the same p as
-                // the hero — no separate empty solid panel that "pops".
-                val incoming = tab == activeTo
+                // Home↔Profile shared-axis (matches ideal HTML):
+                //  • home parallax-shifts ~28%; profile full-slides in/out
+                //  • both stay opaque (no fade flash)
+                //  • same p drives hero flight → layers stay in sync
+                //  • avatar/name hidden on both; one hero flies on top
+                val parallax = 0.28f
+                val dx = when {
+                    tab == activeFrom && activeTo == Tab.Profile -> -p * parallax * w
+                    tab == activeTo && activeTo == Tab.Profile -> (1f - p) * w
+                    tab == activeFrom && activeTo == Tab.Home -> p * w
+                    tab == activeTo && activeTo == Tab.Home -> -(1f - p) * parallax * w
+                    else -> 0f
+                }
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .zIndex(if (incoming) 1f else 0f)
+                        .zIndex(if (tab == activeTo) 1f else 0f)
                         .graphicsLayer {
-                            alpha = if (incoming) p else 1f
+                            translationX = dx
                             clip = true
-                        }
-                        .background(Letify.colors.bg),
+                        },
                 ) {
                     content(tab, true)
                 }
@@ -820,6 +833,7 @@ private fun CachedTabPager(
             }
         }
 
+        // Hero on top of both screens, same p, every frame of the flight.
         if (showHero && hero != null) {
             Box(Modifier.fillMaxSize().zIndex(20f)) {
                 hero(heroT)

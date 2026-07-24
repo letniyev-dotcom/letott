@@ -28,14 +28,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
@@ -130,8 +130,8 @@ fun ProfileScreen(
             Box(
                 Modifier
                     .size(108.dp)
-                    .onGloballyPositioned { onAvatarBoundsChanged(it.boundsInWindow()) }
-                    .alpha(if (hideAvatarName) 0f else 1f)
+                    .onGloballyPositioned { onAvatarBoundsChanged(it.boundsInRoot()) }
+                    .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f }
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(listOf(Letify.colors.accent, LetifyColors.TilePink)),
@@ -168,8 +168,8 @@ fun ProfileScreen(
                 color = Letify.colors.text,
                 style = Letify.typography.headlineLarge,
                 modifier = Modifier
-                    .onGloballyPositioned { onNameBoundsChanged(it.boundsInWindow()) }
-                    .alpha(if (hideAvatarName) 0f else 1f),
+                    .onGloballyPositioned { onNameBoundsChanged(it.boundsInRoot()) }
+                    .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f },
             )
         }
         Box(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 10.dp), contentAlignment = Alignment.Center) {
