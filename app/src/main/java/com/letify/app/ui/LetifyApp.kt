@@ -705,32 +705,36 @@ private fun CachedTabPager(
         }
     }
 
-    val forward =
-        order.indexOf(toTab).coerceAtLeast(0) >= order.indexOf(fromTab).coerceAtLeast(0)
-    val dir = if (forward) 1f else -1f
-
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat()
-        val p = progress.value
+        // First frame after current changes (before LaunchedEffect): treat as
+        // transition starting at p=0 so the hero never jumps to the end and
+        // snaps back (that was the blink / lag).
+        val pending = current != toTab
+        val activeFrom = if (pending) toTab else fromTab
+        val activeTo = if (pending) current else toTab
+        val p = if (pending && progress.value >= 0.999f) 0f else progress.value
         val isAvatarPair =
-            (fromTab == Tab.Home && toTab == Tab.Profile) ||
-            (fromTab == Tab.Profile && toTab == Tab.Home)
-        val settledHome = fromTab == Tab.Home && toTab == Tab.Home
-        val settledProfile = fromTab == Tab.Profile && toTab == Tab.Profile
-        val showHero = isAvatarPair || settledHome || settledProfile
+            (activeFrom == Tab.Home && activeTo == Tab.Profile) ||
+            (activeFrom == Tab.Profile && activeTo == Tab.Home)
+        // Hero only while the flight is in progress — at rest each screen
+        // draws its own avatar, no separate always-on layer.
+        val showHero = isAvatarPair
         val heroT = when {
-            isAvatarPair && toTab == Tab.Profile -> p
-            isAvatarPair && toTab == Tab.Home -> 1f - p
-            settledProfile -> 1f
+            isAvatarPair && activeTo == Tab.Profile -> p
+            isAvatarPair && activeTo == Tab.Home -> 1f - p
             else -> 0f
         }
+        val activeDir =
+            if (order.indexOf(activeTo).coerceAtLeast(0) >= order.indexOf(activeFrom).coerceAtLeast(0))
+                1f else -1f
 
         visited.forEach { tab ->
-            val parked = tab != toTab && tab != fromTab
+            val parked = tab != activeTo && tab != activeFrom
             if (isAvatarPair && !parked) {
                 // Stay in place (dx=0) so bounds stay valid. Incoming has solid
                 // bg (no see-through); content fades with the same p as the hero.
-                val incoming = tab == toTab
+                val incoming = tab == activeTo
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -748,22 +752,22 @@ private fun CachedTabPager(
                 return@forEach
             }
             val dx = when (tab) {
-                toTab -> (1f - p) * dir * w
-                fromTab -> -p * dir * w
+                activeTo -> (1f - p) * activeDir * w
+                activeFrom -> -p * activeDir * w
                 else -> w
             }
-            val hide = showHero && (tab == Tab.Home || tab == Tab.Profile)
             Box(
                 Modifier
                     .fillMaxSize()
-                    .zIndex(if (tab == toTab) 1f else 0f)
+                    .zIndex(if (tab == activeTo) 1f else 0f)
                     .graphicsLayer {
                         translationX = dx
                         alpha = if (parked) 0f else 1f
                         clip = true
                     },
             ) {
-                content(tab, hide)
+                // hide only during active flight; settled screens draw their own
+                content(tab, false)
             }
         }
 

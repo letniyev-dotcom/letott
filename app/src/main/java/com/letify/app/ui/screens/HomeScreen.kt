@@ -2,12 +2,11 @@ package com.letify.app.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,10 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -58,6 +56,7 @@ import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.rememberLottieComposition
+import com.letify.app.ui.components.ElasticOverscroll
 import com.letify.app.ui.components.NoFeedbackButton
 import com.letify.app.ui.icons.SolarIcon
 import com.letify.app.ui.state.LocalAppState
@@ -111,8 +110,7 @@ fun HomeScreen(
     val sleepCat by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/sleep_cat.json"))
     val weightHand by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/weight_hand.json"))
     val pagerState = rememberPagerState(pageCount = { 2 })
-    val metricsListState = rememberLazyListState()
-    val metricsSnap = rememberSnapFlingBehavior(metricsListState)
+    val metricsScroll = rememberScrollState()
 
     val moments = state.mediaItems.take(3)
     val tasks = state.tasksToday()
@@ -326,8 +324,7 @@ fun HomeScreen(
             }
         }
 
-        // Metrics strip — one continuous row, equal gaps, scrolls edge-to-edge.
-        // Two cards fit the viewport; peek of the next is natural via LazyRow.
+        // Metrics strip — free horizontal scroll, equal gaps, app elastic overscroll.
         val sleepEntry = state.sleepLog.maxByOrNull { it.dateKey }
         val sleepMinutes = sleepEntry?.durationMinutes ?: 0
         val sleepProgress = (sleepMinutes.toFloat() / state.sleepGoalMinutes.coerceAtLeast(1))
@@ -344,76 +341,54 @@ fun HomeScreen(
         val metricsEdge = 20.dp
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val cardW = (maxWidth - metricsEdge * 2 - metricsGap) / 2
-            Column(Modifier.fillMaxWidth()) {
-                LazyRow(
-                    state = metricsListState,
-                    flingBehavior = metricsSnap,
-                    contentPadding = PaddingValues(horizontal = metricsEdge),
-                    horizontalArrangement = Arrangement.spacedBy(metricsGap),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    item {
-                        MetricCard(
-                            modifier = Modifier.width(cardW),
-                            composition = sandwich,
-                            title = "Питание",
-                            progress = foodProgress,
-                            label = "${state.kcal} из ${state.kcalTarget} ккал",
-                            color = LetifyColors.Cal,
-                            onAdd = onOpenNutrition,
-                        )
-                    }
-                    item {
-                        MetricCard(
-                            modifier = Modifier.width(cardW),
-                            composition = coke,
-                            title = "Вода",
-                            progress = waterProgress,
-                            label = formatWater(state.waterMl, state.waterTarget),
-                            color = LetifyColors.Water,
-                            onAdd = { state.addWater(250, "Вода", "water") },
-                        )
-                    }
-                    item {
-                        MetricCard(
-                            modifier = Modifier.width(cardW),
-                            composition = sleepCat,
-                            title = "Сон",
-                            progress = sleepProgress,
-                            label = sleepLabel,
-                            color = LetifyColors.Purple,
-                            onAdd = onAddSleep,
-                        )
-                    }
-                    item {
-                        MetricCard(
-                            modifier = Modifier.width(cardW),
-                            composition = weightHand,
-                            title = "Вес",
-                            progress = weightProgress,
-                            label = weightLabel,
-                            color = LetifyColors.Orange,
-                            onAdd = onAddWeight,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                val activePair = (metricsListState.firstVisibleItemIndex / 2).coerceIn(0, 1)
+            ElasticOverscroll(
+                modifier = Modifier.fillMaxWidth(),
+                maxVertical = 0.dp,
+                maxHorizontal = 48.dp,
+            ) {
                 Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(metricsScroll)
+                        .padding(horizontal = metricsEdge),
+                    horizontalArrangement = Arrangement.spacedBy(metricsGap),
                 ) {
-                    repeat(2) { i ->
-                        val on = activePair == i
-                        Box(
-                            Modifier
-                                .padding(horizontal = 3.dp)
-                                .height(6.dp)
-                                .width(if (on) 16.dp else 6.dp)
-                                .clip(RoundedCornerShape(99.dp))
-                                .background(if (on) Letify.colors.accent else Color.White.copy(alpha = 0.15f)),
-                        )
-                    }
+                    MetricCard(
+                        modifier = Modifier.width(cardW),
+                        composition = sandwich,
+                        title = "Питание",
+                        progress = foodProgress,
+                        label = "${state.kcal} из ${state.kcalTarget} ккал",
+                        color = LetifyColors.Cal,
+                        onAdd = onOpenNutrition,
+                    )
+                    MetricCard(
+                        modifier = Modifier.width(cardW),
+                        composition = coke,
+                        title = "Вода",
+                        progress = waterProgress,
+                        label = formatWater(state.waterMl, state.waterTarget),
+                        color = LetifyColors.Water,
+                        onAdd = { state.addWater(250, "Вода", "water") },
+                    )
+                    MetricCard(
+                        modifier = Modifier.width(cardW),
+                        composition = sleepCat,
+                        title = "Сон",
+                        progress = sleepProgress,
+                        label = sleepLabel,
+                        color = LetifyColors.Purple,
+                        onAdd = onAddSleep,
+                    )
+                    MetricCard(
+                        modifier = Modifier.width(cardW),
+                        composition = weightHand,
+                        title = "Вес",
+                        progress = weightProgress,
+                        label = weightLabel,
+                        color = LetifyColors.Orange,
+                        onAdd = onAddWeight,
+                    )
                 }
             }
         }
