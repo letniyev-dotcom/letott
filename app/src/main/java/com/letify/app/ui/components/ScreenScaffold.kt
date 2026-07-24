@@ -60,12 +60,14 @@ fun ScreenScaffold(
     CompositionLocalProvider(LocalScreenHPad provides horizontalPadding) {
         if (pinnedHeader == null && !scrollable) {
             // Fixed layout — no vertical scroll (Profile). Content must fit.
+            // Bottom inset is only the floating navbar (~72dp), not the 160dp
+            // scroll-content gutter — otherwise the last rows get clipped.
             Column(
                 Modifier
                     .fillMaxSize()
                     .background(Letify.colors.bg)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = topPadding, bottom = 160.dp)
+                    .padding(top = topPadding, bottom = 88.dp)
             ) {
                 content()
             }

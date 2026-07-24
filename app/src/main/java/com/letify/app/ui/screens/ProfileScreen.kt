@@ -279,13 +279,7 @@ fun ProfileScreen(
                 title = "Моменты",
                 onClick = onMedia,
             )
-        }
-
-        Box(Modifier.height(18.dp))
-        SettingsCard(
-            modifier = Modifier.screenHPad(),
-            contentPadding = PaddingValues(vertical = 4.dp),
-        ) {
+            SettingsRowDivider()
             SettingsRow(
                 icon = "menu-dots-bold",
                 iconTile = LetifyColors.TileBlue,
