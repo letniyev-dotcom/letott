@@ -27,6 +27,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -194,15 +196,19 @@ fun HomeScreen(
             }
         }
 
-        // Progress carousel — fixed height, no parent scroll
-        Box(Modifier.fillMaxWidth().height(212.dp)) {
+        // Progress carousel — slightly shorter box, thicker ring, more air below.
+        Box(Modifier.fillMaxWidth().height(198.dp).padding(top = 4.dp)) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (page == 0) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            DayRing(overall, 166.dp)
+                            DayRing(overall, 158.dp)
                             Spacer(Modifier.height(14.dp))
-                            Text("прогресс за день", color = Letify.colors.muted, style = Letify.typography.bodyMedium)
+                            Text(
+                                "прогресс за день",
+                                color = Letify.colors.muted,
+                                style = Letify.typography.bodyMedium,
+                            )
                         }
                     } else {
                         Column(
@@ -210,54 +216,70 @@ fun HomeScreen(
                             modifier = Modifier.padding(horizontal = 32.dp),
                         ) {
                             Text(
-                                "ИИ · скоро",
+                                "ИИ · сегодня",
                                 color = Letify.colors.accent,
                                 style = Letify.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(99.dp))
                                     .background(Letify.colors.accent.copy(alpha = 0.14f))
                                     .padding(horizontal = 12.dp, vertical = 5.dp),
                             )
                             Spacer(Modifier.height(14.dp))
-                            // Same 14sp as «Цель достигнута» in profile
                             Text(
                                 "Выпей воды — до цели осталось пол-литра. После ужина лучше лёгкая прогулка.",
                                 color = Letify.colors.text,
-                                style = Letify.typography.bodyMedium,
+                                style = Letify.typography.bodyLarge,
                                 textAlign = TextAlign.Center,
                             )
-                            Spacer(Modifier.height(10.dp))
-                            Text("советы появятся здесь", color = Letify.colors.muted, style = Letify.typography.bodyMedium)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "советы обновляются вечером",
+                                color = Letify.colors.muted,
+                                style = Letify.typography.bodyMedium,
+                            )
                         }
                     }
                 }
             }
         }
 
+        // Animated page dots — active stretches into a pill (concept).
         Row(
-            Modifier.fillMaxWidth().padding(bottom = 14.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             repeat(2) { i ->
                 val on = pagerState.currentPage == i
+                val w by animateDpAsState(
+                    targetValue = if (on) 18.dp else 6.dp,
+                    animationSpec = tween(durationMillis = 320),
+                    label = "homeDot",
+                )
                 Box(
                     Modifier
                         .padding(horizontal = 3.dp)
                         .height(6.dp)
-                        .width(if (on) 16.dp else 6.dp)
+                        .width(w)
                         .clip(RoundedCornerShape(99.dp))
-                        .background(if (on) Letify.colors.accent else Color.White.copy(alpha = 0.15f)),
+                        .background(
+                            if (on) Letify.colors.accent
+                            else Letify.colors.track,
+                        ),
                 )
             }
         }
 
-        // Moments — compact
+        // Moments — uniform 12dp gap to the next card.
         NoFeedbackButton(
             onClick = onOpenMoments,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 8.dp),
+                .padding(bottom = 12.dp),
         ) {
             Row(
                 Modifier
@@ -525,14 +547,21 @@ private fun DayRing(progress: Float, size: Dp) {
     val p = progress.coerceIn(0f, 1f)
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(size)) {
-            val sw = 11.dp.toPx()
+            // Thicker stroke (concept: 14dp) — reads clearer at a glance.
+            val sw = 14.dp.toPx()
             val inset = sw / 2f
             val arc = Size(this.size.width - sw, this.size.height - sw)
             val origin = Offset(inset, inset)
             drawArc(track, -90f, 360f, false, origin, arc, style = Stroke(sw, cap = StrokeCap.Round))
             drawArc(accent, -90f, 360f * p, false, origin, arc, style = Stroke(sw, cap = StrokeCap.Round))
         }
-        Text("${(p * 100).toInt()}%", color = Letify.colors.text, style = Letify.typography.displayLarge, fontSize = 36.sp)
+        Text(
+            "${(p * 100).toInt()}%",
+            color = Letify.colors.text,
+            style = Letify.typography.displayLarge,
+            fontSize = 36.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

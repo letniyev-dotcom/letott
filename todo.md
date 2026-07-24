@@ -1,3 +1,7 @@
+## r206-home-redesign (versionCode 206)
+- Главная по HTML-концепту: кольцо 158dp / stroke 14dp, tips «ИИ · сегодня» + футер, animated pill-dots (6→18, 320ms), единый gap 12dp Moments→Plan→metrics, off-dot = track (читается в light).
+- versionCode 205→206.
+
 ## r202-moments-profile-noscroll (versionCode 202)
 - **Профиль:** убран verticalScroll — `ScreenScaffold(scrollable = false)`. Экран больше не скроллится.
 - **Моменты на главной (светлая тема):** пустые/задние карточки рисовались `Color.White(0.06)` / `track` (почти прозрачные) → в light theme исчезали. Теперь всегда непрозрачный `container` + обводка `bg` 2.5dp (разделитель между нахлёстами, не «сплющено»).

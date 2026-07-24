@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 205
-        versionName = "r205-moments-size-restore"
+        versionCode = 206
+        versionName = "r206-home-redesign"
         vectorDrawables { useSupportLibrary = true }
     }
 
