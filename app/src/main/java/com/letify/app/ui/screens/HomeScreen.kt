@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -110,7 +112,7 @@ fun HomeScreen(
     val sleepCat by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/sleep_cat.json"))
     val weightHand by rememberLottieComposition(LottieCompositionSpec.Asset("stickers/weight_hand.json"))
     val pagerState = rememberPagerState(pageCount = { 2 })
-    val metricsScroll = rememberScrollState()
+    val metricsScroll = rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) }
 
     val moments = state.mediaItems.take(3)
     val tasks = state.tasksToday()

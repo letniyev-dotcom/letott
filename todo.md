@@ -1,3 +1,10 @@
+## r201-profile-flight-smooth (versionCode 201)
+- **Лаг открытия профиля (Home→Profile hero):** `progress.value` читался в composition `CachedTabPager` → каждый кадр 520ms пересобирал оба тяжёлых экрана (Home с 4×Lottie + Profile). ФИКС: progress читается ТОЛЬКО внутри `graphicsLayer` (draw-фаза) и в изолированном `IdentityFlightHost` — tab content больше не рекомпозится на кадр анимации.
+- **Карточки метрик прыгают в начало + мигают Lottie-эмодзи:** ветка `if (isAvatarPair)` vs `else` меняла composition-tree → Compose dispose/recreate Home → `rememberScrollState`/`Lottie` рестарт. ФИКС: единый Box→content путь для всех табов; меняется только math в graphicsLayer.
+- **Ник криво выравнивается в полёте:** грубая оценка ширины `name.length * 0.62em` + CenterStart в боксе неверной ширины. ФИКС: `TextMeasurer` меряет реальные glyph-box Home(19sp)/Profile(22sp); летящий Text позиционируется по top-left без фиксированной ширины.
+- Полёт авы/имени (параллакс 0.28, 520ms, HeroFlightEasing, z-order Profile сверху) — не тронут.
+- versionCode 200→201, versionName r201-profile-flight-smooth.
+
 ## r173-camera-slide-up (versionCode 173)
 - **Камера:** полностью убрал container-transform / expand-morph (белая вспышка, потеря скруглений, обрезания, лаги).
   Теперь открывается **простым плавным слайдом снизу** (translationY 1→0) + лёгкий scrim.

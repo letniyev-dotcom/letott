@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 200
-        versionName = "r200-no-navbar"
+        versionCode = 201
+        versionName = "r201-profile-flight-smooth"
         vectorDrawables { useSupportLibrary = true }
     }
 
