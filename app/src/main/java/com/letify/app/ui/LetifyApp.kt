@@ -41,11 +41,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -92,7 +90,6 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
@@ -323,21 +320,23 @@ fun LetifyApp() {
     // Single identity for avatar+name (Home ⇄ Profile).
     // There is exactly ONE composable that paints them — at the root.
     // Home/Profile only keep empty size slots (placeholders). No copy, no hide-of-real.
-    //
-    // HomeScreen/ProfileScreen already report their REAL, measured avatar and
-    // name rects via onAvatarBoundsChanged/onNameBoundsChanged (onGloballyPositioned
-    // + boundsInRoot) — that plumbing existed but was never wired up here, so the
-    // flight used to fly to/from `estimated*Rect()` guesses instead (hand-rolled
-    // "charWidth ≈ fontPx * 0.62" math for the name). That guess doesn't match real
-    // Cyrillic glyph metrics, so the name landed a few px off-center in Profile —
-    // that's the "ник ... выравнивается неправильно" bug. We now keep the last
-    // real measurement for each of the 4 rects and prefer it over the estimate the
-    // instant it's available (estimate is only a first-frame fallback, before
-    // Home/Profile have measured once).
-    var realHomeAvatar by remember { mutableStateOf<Rect?>(null) }
-    var realHomeName by remember { mutableStateOf<Rect?>(null) }
-    var realProfileAvatar by remember { mutableStateOf<Rect?>(null) }
-    var realProfileName by remember { mutableStateOf<Rect?>(null) }
+
+    // Real (measured) avatar/name rects reported by Home/Profile's actual header
+    // layout via onAvatarBoundsChanged/onNameBoundsChanged (onGloballyPositioned
+    // under the hood). We only TRUST a report while that tab is the fully-settled
+    // active surface (tabSettled && currentTab == tab): mid-flight the header sits
+    // inside a translated graphicsLayer (the hero slide itself), so boundsInRoot()
+    // would report an already-shifted rect and feed that shift back into the
+    // flight target. null until the tab has been shown at rest at least once —
+    // the estimated*Rect() functions are the fallback for that first flight, and
+    // are why the name used to land misaligned: they guess glyph width from
+    // character count (`name.length * fontPx * 0.62f`), which is only ever
+    // approximate for proportional Cyrillic bold text. Once the real rect has
+    // been measured once, it's exact from then on.
+    var homeAvatarRect by remember { mutableStateOf<Rect?>(null) }
+    var homeNameRect by remember { mutableStateOf<Rect?>(null) }
+    var profileAvatarRect by remember { mutableStateOf<Rect?>(null) }
+    var profileNameRect by remember { mutableStateOf<Rect?>(null) }
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         OverlayHost(parallaxProgress = parallax) {
@@ -353,22 +352,22 @@ fun LetifyApp() {
                     order = state.navbarOrder,
                     onSettledChange = { tabSettled = it },
                     modifier = Modifier.fillMaxSize(),
-                    identity = { progress ->
+                    identity = { t ->
                         val density = LocalDensity.current
                         val statusBarPx = WindowInsets.statusBars.getTop(density).toFloat()
                         val screenW =
                             with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
                         val name = state.userName.ifBlank { "друг" }
                         UserIdentity(
-                            progress = progress,
-                            sourceAvatar = realHomeAvatar
-                                ?: estimatedHomeAvatarRect(density, statusBarPx),
-                            targetAvatar = realProfileAvatar
+                            progress = t,
+                            sourceAvatar = homeAvatarRect ?: estimatedHomeAvatarRect(density, statusBarPx),
+                            targetAvatar = profileAvatarRect
                                 ?: estimatedProfileAvatarRect(density, statusBarPx, screenW),
-                            sourceName = realHomeName
-                                ?: estimatedHomeNameRect(density, statusBarPx, name),
-                            targetName = realProfileName
+                            sourceName = homeNameRect ?: estimatedHomeNameRect(density, statusBarPx, name),
+                            targetName = profileNameRect
                                 ?: estimatedProfileNameRect(density, statusBarPx, screenW, name),
+                            sourceFontSp = 19f,
+                            targetFontSp = 22f,
                             name = name,
                             photoUrl = state.telegramUser?.photoUrl,
                             letter = name.firstOrNull()?.uppercase() ?: "?",
@@ -387,8 +386,12 @@ fun LetifyApp() {
                                 onOpenMoments = { push(AddOverlay.Media) },
                                 // Placeholder only — the one real identity is at the root.
                                 hideAvatarName = usePlaceholder,
-                                onAvatarBoundsChanged = { realHomeAvatar = it },
-                                onNameBoundsChanged = { realHomeName = it },
+                                onAvatarBoundsChanged = { r ->
+                                    if (tabSettled && state.currentTab == Tab.Home) homeAvatarRect = r
+                                },
+                                onNameBoundsChanged = { r ->
+                                    if (tabSettled && state.currentTab == Tab.Home) homeNameRect = r
+                                },
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -416,8 +419,12 @@ fun LetifyApp() {
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
                                 hideAvatarName = usePlaceholder,
-                                onAvatarBoundsChanged = { realProfileAvatar = it },
-                                onNameBoundsChanged = { realProfileName = it },
+                                onAvatarBoundsChanged = { r ->
+                                    if (tabSettled && state.currentTab == Tab.Profile) profileAvatarRect = r
+                                },
+                                onNameBoundsChanged = { r ->
+                                    if (tabSettled && state.currentTab == Tab.Profile) profileNameRect = r
+                                },
                             )
                         }
                     }
@@ -682,15 +689,11 @@ private fun CachedTabPager(
     onSettledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     /**
-     * The single avatar+name identity. `progress` is a DEFERRED reader —
-     * call it only from inside a `graphicsLayer {}` (or other draw-phase)
-     * block, never from the composable body — that's what lets the whole
-     * flight run without recomposing anything every frame. Absolute scale:
-     * 0 = home layout, 1 = profile layout. Drawn whenever Home or Profile
-     * owns the surface — at rest and during the flight. Screens only
-     * reserve empty slots.
+     * The single avatar+name identity. `t` is absolute: 0 = home layout,
+     * 1 = profile layout. Drawn whenever Home or Profile owns the surface —
+     * at rest and during the flight. Screens only reserve empty slots.
      */
-    identity: (@Composable (progress: () -> Float) -> Unit)? = null,
+    identity: (@Composable (t: () -> Float) -> Unit)? = null,
     content: @Composable (tab: Tab, usePlaceholder: Boolean) -> Unit,
 ) {
     val visited = remember { mutableStateListOf<Tab>() }
@@ -725,119 +728,108 @@ private fun CachedTabPager(
 
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat()
-        // IMPORTANT: nothing below this point reads `progress.value` at the
-        // composable-body level anymore. `pending`/`activeFrom`/`activeTo`/
-        // `isAvatarPair`/`settledHome`/`settledProfile`/`showIdentity`/
-        // `activeDir` only depend on WHICH tabs are involved (current /
-        // fromTab / toTab), which change at most once per transition — not
-        // every frame. The old code additionally read `progress.value` here
-        // (`val p = ...`) purely to compute per-tab offsets, which meant
-        // Compose recomposed this entire pager — and every Box, and the
-        // identity overlay's Text/AsyncImage — on every single animation
-        // frame (~30+ times over the 520ms hero flight). That per-frame
-        // recomposition + remeasure + text re-shaping was the actual
-        // "лагает" stutter, not the tween/easing itself. `progress.value` is
-        // now read ONLY inside each `graphicsLayer {}` block below, which
-        // Compose can re-run on the draw phase alone, without recomposing
-        // anything above it.
+        // NOTE: `pending`/`activeFrom`/`activeTo`/`isAvatarPair`/`showIdentity` below
+        // only depend on `current`/`fromTab`/`toTab` — they change once per flight
+        // (start/settle), never per frame. `progress.value` itself is deliberately
+        // NOT read here anymore (it used to be, via `val p = ... progress.value`):
+        // that made this whole composable — and everything textually inside it,
+        // including every tab's content() — recompose on EVERY animation frame
+        // (up to ~60-120x per flight). That per-frame recomposition storm was the
+        // real source of the "лагает"/janky screen: not a drawing cost, a Compose
+        // recomposition cost. Every place that needs the live progress now reads
+        // `progress.value` from inside a `graphicsLayer { ... }` block instead —
+        // graphicsLayer reads are deferred to the draw/layout phase, so updating
+        // them only triggers a re-draw, never a recomposition.
         val pending = current != toTab
         val activeFrom = if (pending) toTab else fromTab
         val activeTo = if (pending) current else toTab
         val isAvatarPair =
             (activeFrom == Tab.Home && activeTo == Tab.Profile) ||
             (activeFrom == Tab.Profile && activeTo == Tab.Home)
-        val settledHome = activeFrom == Tab.Home && activeTo == Tab.Home
         val settledProfile = activeFrom == Tab.Profile && activeTo == Tab.Profile
         // One identity whenever Home or Profile is the active surface.
-        val showIdentity = isAvatarPair || settledHome || settledProfile
+        val showIdentity = isAvatarPair || (activeFrom == Tab.Home && activeTo == Tab.Home) || settledProfile
         val activeDir =
             if (order.indexOf(activeTo).coerceAtLeast(0) >= order.indexOf(activeFrom).coerceAtLeast(0))
                 1f else -1f
-
-        // Resolves the live, clamped progress. Deliberately a plain (non-@Composable)
-        // local function, not a `val`, so calling it is a snapshot-state read that
-        // only happens where it's actually invoked (inside graphicsLayer blocks) —
-        // never during composition.
-        fun resolvedP(): Float {
-            val raw = progress.value
-            return if (pending && raw >= 0.999f) 0f else raw
-        }
+        // Clamped, "did we just land" read of progress — recomputed fresh every
+        // time this lambda is CALLED (i.e. every frame, from inside a
+        // graphicsLayer), never at composition time.
+        val progressNow: () -> Float = { if (pending && progress.value >= 0.999f) 0f else progress.value }
 
         visited.forEach { tab ->
             val parked = tab != activeTo && tab != activeFrom
-            val isAvatarSlide = isAvatarPair && !parked
-            // Home/Profile use placeholders whenever the root identity is shown —
-            // which is also true for the whole duration of an avatar-pair slide.
+            // Whether THIS tab is doing the avatar-pair (hero) motion right now.
+            val isAvatarPairMotion = isAvatarPair && !parked
+            // Home/Profile use placeholders whenever the root identity is shown.
             val usePlaceholder = showIdentity && (tab == Tab.Home || tab == Tab.Profile)
 
-            // ONE Box / ONE `content(tab, ...)` call site for every tab, in every
-            // state. Only the modifier VALUES branch on `isAvatarSlide` below —
-            // there used to be two separate `content(tab, ...)` calls written at
-            // two different places in the source (one for the avatar-pair slide,
-            // one for everything else). Even though it was the same lambda, Compose
-            // identifies a composable's remembered state by its call SITE, not by
-            // runtime tab equality — so the instant `isAvatarPair` flipped (opening
-            // or closing Profile), Home's whole subtree was torn down at one call
-            // site and rebuilt from scratch at the other. That's what caused both
-            // bugs the user reported: the Lottie stickers restarted their
-            // composition load (visible as a flash/blink), and the metrics row's
-            // `ScrollState` was recreated at 0 (visible as the cards snapping back
-            // to the start) — even a "остаться после" flick to the end of the
-            // metric cards was invisible to the transition until this recreation
-            // hit. Keeping a single call site means the SAME HomeScreen instance
-            // (same Lottie compositions, same ScrollState) stays mounted straight
-            // through the whole open/close flight.
+            // zIndex only depends on tab identity + which tabs are active — stable
+            // across a flight's frames, safe to compute directly (not per-frame).
+            val zIndexValue = if (isAvatarPairMotion) {
+                // Profile is ALWAYS the foreground layer of this pair — it's the
+                // one that travels the full screen width, while Home only ever
+                // does the small parallax shift as the receding/entering
+                // backdrop. That asymmetry is the whole point of the hero effect,
+                // so the z-order must match it in BOTH directions (open AND
+                // close) — putting whichever tab is merely ARRIVING on top would
+                // paint the slow-moving Home parallax over the tail end of
+                // Profile's slide-out on close.
+                if (tab == Tab.Profile) 1f else 0f
+            } else {
+                if (tab == activeTo) 1f else 0f
+            }
+
+            // IMPORTANT: exactly ONE Box/content() call site per tab, regardless
+            // of isAvatarPairMotion. Previously the avatar-pair case and the
+            // normal case were two separate `Box(...) { content(...) }` call
+            // sites picked via an if/else that wrapped the composable calls
+            // themselves. Since only one of the two ever ran for a given tab,
+            // and WHICH one ran flipped every time a Home⇄Profile flight
+            // started/ended, Compose saw that as the tab's whole subtree being
+            // torn down and recreated at that moment — not just re-parented.
+            // That silently wiped every bit of remembered state inside
+            // HomeScreen/ProfileScreen each time: the Lottie stickers lost their
+            // internal animator and restarted from frame 0 (the "мигают эмодзи"
+            // bug, exactly on open/close), and the cards' scroll/pager state
+            // reset to 0 (the "перекатываются в начало" bug, also exactly on
+            // open/close). Keeping ONE call site and only branching on plain
+            // values (zIndex/translation formula) fixes both, because the tab's
+            // position in the composition never moves.
             Box(
                 Modifier
                     .fillMaxSize()
-                    // Profile is ALWAYS the foreground layer of the avatar-pair —
-                    // it's the one that travels the full screen width (dx up to
-                    // ±w), while Home only ever does the small `parallax` (0.28×w)
-                    // shift as the receding/entering backdrop. That asymmetry is
-                    // the whole point of the hero effect, so the z-order must match
-                    // it in BOTH directions (a plain "activeTo on top" would put
-                    // Home above the exiting Profile on close — see the old
-                    // "second identical screen sliding behind it" glitch).
-                    .zIndex(
-                        if (isAvatarSlide) (if (tab == Tab.Profile) 1f else 0f)
-                        else (if (tab == activeTo) 1f else 0f),
-                    )
+                    .zIndex(zIndexValue)
                     .graphicsLayer {
-                        val p = resolvedP()
-                        if (isAvatarSlide) {
+                        val p = progressNow()
+                        translationX = if (isAvatarPairMotion) {
                             val parallax = 0.28f
-                            translationX = when {
+                            when {
                                 tab == activeFrom && activeTo == Tab.Profile -> -p * parallax * w
                                 tab == activeTo && activeTo == Tab.Profile -> (1f - p) * w
                                 tab == activeFrom && activeTo == Tab.Home -> p * w
                                 tab == activeTo && activeTo == Tab.Home -> -(1f - p) * parallax * w
                                 else -> 0f
                             }
-                            alpha = 1f
                         } else {
-                            translationX = when (tab) {
+                            when (tab) {
                                 activeTo -> (1f - p) * activeDir * w
                                 activeFrom -> -p * activeDir * w
                                 else -> w
                             }
-                            alpha = if (parked) 0f else 1f
                         }
+                        alpha = if (!isAvatarPairMotion && parked) 0f else 1f
                         clip = true
                     }
                     // Opaque page bg — Profile/ScreenScaffold used to be
-                    // transparent, so home bled through during the slide.
-                    // MUST come AFTER graphicsLayer in the chain: a
-                    // .background() placed BEFORE graphicsLayer draws on
-                    // the outer/untransformed canvas, so it painted the
-                    // FULL viewport at its static layout position — not
-                    // the translated/clipped position — regardless of
-                    // `dx`. That made the entering tab's plate cover the
-                    // whole screen from frame 0 (the other tab "resko
-                    // ischezaet") while its actual content still had to
-                    // slide in underneath that plate ("prosvechivaet").
-                    // Moving background after graphicsLayer makes it
-                    // part of the SAME transformed+clipped layer as the
-                    // content, so plate and content move as one.
+                    // transparent, so home bled through during the slide. MUST
+                    // come AFTER graphicsLayer in the chain: a .background()
+                    // placed BEFORE graphicsLayer draws on the outer/
+                    // untransformed canvas, so it painted the FULL viewport at
+                    // its static layout position — not the translated/clipped
+                    // position. Moving background after graphicsLayer makes it
+                    // part of the SAME transformed+clipped layer as the content,
+                    // so plate and content move as one.
                     .background(Letify.colors.bg),
             ) {
                 content(tab, usePlaceholder)
@@ -845,16 +837,17 @@ private fun CachedTabPager(
         }
 
         if (showIdentity && identity != null) {
-            Box(Modifier.fillMaxSize().zIndex(20f)) {
-                identity {
-                    val p = resolvedP()
-                    when {
-                        isAvatarPair && activeTo == Tab.Profile -> p
-                        isAvatarPair && activeTo == Tab.Home -> 1f - p
-                        settledProfile -> 1f
-                        else -> 0f // settled home
-                    }
+            val identityT: () -> Float = {
+                val p = progressNow()
+                when {
+                    isAvatarPair && activeTo == Tab.Profile -> p
+                    isAvatarPair && activeTo == Tab.Home -> 1f - p
+                    settledProfile -> 1f
+                    else -> 0f // settled home
                 }
+            }
+            Box(Modifier.fillMaxSize().zIndex(20f)) {
+                identity(identityT)
             }
         }
     }
@@ -862,16 +855,13 @@ private fun CachedTabPager(
 
 @Composable
 private fun UserIdentity(
-    // Deferred reader — MUST only be called inside a graphicsLayer {} (or
-    // other draw-phase) block below, never at the top of this function body.
-    // Calling it here would make this whole composable (both Texts, the
-    // AsyncImage, both Boxes) recompose on every animation frame again,
-    // which is exactly the per-frame cost we're removing.
     progress: () -> Float,
     sourceAvatar: Rect,
     targetAvatar: Rect,
     sourceName: Rect,
     targetName: Rect,
+    sourceFontSp: Float,
+    targetFontSp: Float,
     name: String,
     photoUrl: String?,
     letter: String,
@@ -882,43 +872,39 @@ private fun UserIdentity(
         listOf(Letify.colors.accent, LetifyColors.TilePink),
     )
 
-    // Both boxes are measured/laid out EXACTLY ONCE, at the larger of the
-    // two (source, target) footprints — Profile's avatar/name are always
-    // the bigger of the pair, so in practice this is the Profile size.
-    // Every frame after that first layout pass is a pure graphicsLayer
-    // scale + translate, which is a draw-phase-only operation (no measure,
-    // no layout, no text re-shaping).
+    // Both pieces are laid out ONCE at their target (Profile) size — never
+    // re-measured mid-flight — and the flight itself is done entirely with a
+    // graphicsLayer translate+scale (transformOrigin pinned to the top-left
+    // corner, so scaling never fights the translation). That's what a real
+    // container-transform does: render once at full resolution, then let the
+    // GPU scale it down for the smaller Home state. Interpolating `.size(...)`
+    // instead (the previous approach) forces Compose to re-measure and
+    // re-layout this subtree on every single animation frame — a much
+    // heavier operation than a draw-phase transform, and the main reason the
+    // flight used to skip frames on slower devices.
     //
-    // The old version instead changed the Box's `.size(dp)` AND the text's
-    // `fontSize` from the live progress every frame. Both of those are
-    // layout inputs in Compose — resizing the box forces a remeasure of
-    // its subtree, and changing fontSize forces the Text to re-shape its
-    // glyphs from scratch — so the flight was doing a full measure + text
-    // layout pass ~30+ times over its 520ms duration. That per-frame
-    // layout/shaping work (not the tween/easing) was the actual stutter.
-    val avatarBoxPx = max(sourceAvatar.width, targetAvatar.width)
-    val avatarBoxDp = with(density) { avatarBoxPx.toDp() }
-
+    // Reading `progress()` happens INSIDE these graphicsLayer blocks only —
+    // never at composition time — so updating it never recomposes this
+    // composable, only redraws it.
     Box(
         Modifier
-            .size(avatarBoxDp)
             .graphicsLayer {
                 val t = progress().coerceIn(0f, 1f)
-                val rect = lerp(sourceAvatar, targetAvatar, t)
-                val scale = if (avatarBoxPx > 0f) rect.width / avatarBoxPx else 1f
-                scaleX = scale
-                scaleY = scale
-                translationX = rect.left
-                translationY = rect.top
+                val avatarRect = lerp(sourceAvatar, targetAvatar, t)
+                translationX = avatarRect.left
+                translationY = avatarRect.top
+                scaleX = avatarRect.width / targetAvatar.width
+                scaleY = avatarRect.height / targetAvatar.height
                 transformOrigin = TransformOrigin(0f, 0f)
             }
+            .size(
+                with(density) { targetAvatar.width.toDp() },
+                with(density) { targetAvatar.height.toDp() },
+            )
             .clip(CircleShape)
             .background(avatarBrush, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        // Fixed at the full-size (Profile) glyph size — shrinks visually
-        // along with the rest of the box via the graphicsLayer scale above,
-        // instead of being re-shaped at a new fontSize every frame.
         Text(
             letter,
             color = Color.White,
@@ -935,38 +921,27 @@ private fun UserIdentity(
         }
     }
 
-    // Same treatment for the name: one fixed-size box (sized to the wider
-    // of the two real, measured name rects — see the realHomeName/
-    // realProfileName wiring in LetifyApp), scaled/translated per frame.
-    val nameBoxWPx = max(sourceName.width, targetName.width)
-    val nameBoxHPx = max(sourceName.height, targetName.height)
     Box(
         Modifier
-            .size(
-                with(density) { nameBoxWPx.toDp() },
-                with(density) { nameBoxHPx.toDp() },
-            )
             .graphicsLayer {
                 val t = progress().coerceIn(0f, 1f)
-                val rect = lerp(sourceName, targetName, t)
-                val scale = if (nameBoxWPx > 0f) rect.width / nameBoxWPx else 1f
-                scaleX = scale
-                scaleY = scale
-                translationX = rect.left
-                translationY = rect.top
+                val nameRect = lerp(sourceName, targetName, t)
+                translationX = nameRect.left
+                translationY = nameRect.top
+                scaleX = nameRect.width / targetName.width
+                scaleY = nameRect.height / targetName.height
                 transformOrigin = TransformOrigin(0f, 0f)
-            },
+            }
+            .size(
+                with(density) { targetName.width.toDp() },
+                with(density) { targetName.height.toDp() },
+            ),
         contentAlignment = Alignment.CenterStart,
     ) {
-        // Fixed at Profile's real name size (ScreenScaffold header uses
-        // headlineLarge = 22.sp) — same reasoning as the avatar letter
-        // above: this box's own graphicsLayer scale shrinks it visually to
-        // match Home's smaller size, so the Text itself never needs to be
-        // re-shaped at a different fontSize mid-flight.
         Text(
             name,
             color = Letify.colors.text,
-            fontSize = Letify.typography.headlineLarge.fontSize,
+            fontSize = targetFontSp.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
