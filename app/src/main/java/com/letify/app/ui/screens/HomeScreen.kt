@@ -2,6 +2,7 @@ package com.letify.app.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -446,7 +447,11 @@ private fun PlanRow(task: TaskItem, isCurrent: Boolean, nowMin: Int, dateKey: St
 private fun MomentsStack(items: List<MediaItem>) {
     val rotations = listOf(-7f, 2f, 8f)
     val offsets = listOf(0.dp, 14.dp, 28.dp)
-    Box(Modifier.width(68.dp).height(44.dp)) {
+    // Page-bg ring around every card = opaque separator so the stack
+    // doesn't melt into itself (and stays readable in light theme).
+    val ring = Letify.colors.bg
+    val plate = Letify.colors.container
+    Box(Modifier.width(72.dp).height(48.dp)) {
         // back → front so z-order is correct
         for (i in 2 downTo 0) {
             val item = items.getOrNull(i)
@@ -457,14 +462,19 @@ private fun MomentsStack(items: List<MediaItem>) {
                     .size(width = 36.dp, height = 44.dp)
                     .zIndex((3 - i).toFloat())
                     .rotate(rotations[i])
+                    // Opaque plate first — never use translucent track/white:
+                    // in light theme those vanish against the page bg and the
+                    // back cards look "missing".
                     .clip(RoundedCornerShape(10.dp))
                     .background(
                         when {
-                            item != null -> Letify.colors.track
-                            isAdd -> Letify.colors.accent.copy(alpha = 0.18f)
-                            else -> Color.White.copy(alpha = 0.06f)
+                            isAdd -> Letify.colors.accent.copy(alpha = 0.16f)
+                            else -> plate
                         },
-                    ),
+                    )
+                    // Separator ring in page bg sits ON TOP of the plate so
+                    // overlapping neighbours show a clean gap, not a smear.
+                    .border(2.5.dp, ring, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
@@ -472,15 +482,35 @@ private fun MomentsStack(items: List<MediaItem>) {
                         AsyncImage(
                             model = item.uri,
                             contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
+                            // Inset by the ring so the photo doesn't cover it.
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(2.5.dp)
+                                .clip(RoundedCornerShape(7.5.dp)),
                             contentScale = ContentScale.Crop,
                         )
                     }
                     item != null -> {
-                        Text("▶", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                        // Video tile — solid dark plate under the glyph so it
+                        // never "просвечивает" through the stack.
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(2.5.dp)
+                                .clip(RoundedCornerShape(7.5.dp))
+                                .background(Color(0xFF2A2A2E)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("▶", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                        }
                     }
                     isAdd -> {
                         Text("+", color = Letify.colors.accent, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    else -> {
+                        // Empty back-of-stack slot — still a solid plate so
+                        // all three silhouettes read in light theme.
+                        Text("·", color = Letify.colors.muted, fontSize = 16.sp)
                     }
                 }
             }

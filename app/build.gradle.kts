@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 201
-        versionName = "r201-profile-flight-smooth"
+        versionCode = 202
+        versionName = "r202-moments-profile-noscroll"
         vectorDrawables { useSupportLibrary = true }
     }
 

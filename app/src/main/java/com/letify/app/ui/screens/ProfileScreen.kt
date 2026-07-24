@@ -94,7 +94,7 @@ fun ProfileScreen(
     // Bounds of the "Камера" quick-action tile in root coordinates — the
     // camera container-transform grows from exactly this rect.
 
-    ScreenScaffold(topPadding = 0.dp) {
+    ScreenScaffold(topPadding = 0.dp, scrollable = false) {
         // Single header row — back arrow on the left, pencil on the right.
         // Was two separate full-width rows stacked on top of each other,
         // which doubled the header's height and squeezed everything below it.

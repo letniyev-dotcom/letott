@@ -1,3 +1,9 @@
+## r202-moments-profile-noscroll (versionCode 202)
+- **Профиль:** убран verticalScroll — `ScreenScaffold(scrollable = false)`. Экран больше не скроллится.
+- **Моменты на главной (светлая тема):** пустые/задние карточки рисовались `Color.White(0.06)` / `track` (почти прозрачные) → в light theme исчезали. Теперь всегда непрозрачный `container` + обводка `bg` 2.5dp (разделитель между нахлёстами, не «сплющено»).
+- Фото/видео не перекрывают обводку (inset 2.5dp).
+- versionCode 201→202.
+
 ## r201-profile-flight-smooth (versionCode 201)
 - **Лаг открытия профиля (Home→Profile hero):** `progress.value` читался в composition `CachedTabPager` → каждый кадр 520ms пересобирал оба тяжёлых экрана (Home с 4×Lottie + Profile). ФИКС: progress читается ТОЛЬКО внутри `graphicsLayer` (draw-фаза) и в изолированном `IdentityFlightHost` — tab content больше не рекомпозится на кадр анимации.
 - **Карточки метрик прыгают в начало + мигают Lottie-эмодзи:** ветка `if (isAvatarPair)` vs `else` меняла composition-tree → Compose dispose/recreate Home → `rememberScrollState`/`Lottie` рестарт. ФИКС: единый Box→content путь для всех табов; меняется только math в graphicsLayer.

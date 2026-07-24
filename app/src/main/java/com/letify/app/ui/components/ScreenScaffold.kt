@@ -41,6 +41,8 @@ fun ScreenScaffold(
     horizontalPadding: Dp = ScreenHorizontalPadding,
     scrollState: ScrollState = rememberScrollState(),
     topPadding: Dp = 6.dp,
+    /** When false the body is a plain Column — no verticalScroll / elastic. */
+    scrollable: Boolean = true,
     pinnedHeader: (@Composable () -> Unit)? = null,
     // When the pinned header has a known, constant height the caller can
     // pass it here. The scaffold then reserves that height directly with a
@@ -56,7 +58,18 @@ fun ScreenScaffold(
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(LocalScreenHPad provides horizontalPadding) {
-        if (pinnedHeader == null) {
+        if (pinnedHeader == null && !scrollable) {
+            // Fixed layout — no vertical scroll (Profile). Content must fit.
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(Letify.colors.bg)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = topPadding, bottom = 160.dp)
+            ) {
+                content()
+            }
+        } else if (pinnedHeader == null) {
             // ElasticOverscroll replaces the system stretch with a damped
             // iOS-style translation: scrolls slide a touch further past the
             // edge and ping back — nothing gets visually deformed.
