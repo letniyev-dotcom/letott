@@ -3,6 +3,7 @@
 package com.letify.app.ui.screens
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.LocalOverscrollConfiguration
@@ -429,7 +430,7 @@ private fun MomentDayHost(
 private fun MomentDayContent(
     item: MediaItem,
     dayItems: List<MediaItem>,
-    progress: Animatable<Float>,
+    progress: Animatable<Float, AnimationVector1D>,
     sourceBounds: Rect?,
     heroBounds: Rect,
     onBack: () -> Unit,
@@ -888,7 +889,7 @@ private fun Modifier.fadeTopEdge(height: Dp): Modifier = this
 // tasks, meals, day strip) 60×/sec was the actual cause of the animation
 // lag and the "wrong size after closing" glitch.
 private fun Modifier.flightBounds(
-    progress: Animatable<Float>,
+    progress: Animatable<Float, AnimationVector1D>,
     sourceBounds: Rect?,
     heroBounds: Rect,
 ): Modifier = this
