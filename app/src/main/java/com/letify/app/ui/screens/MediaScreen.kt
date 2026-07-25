@@ -106,6 +106,7 @@ fun MediaScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
     val config = LocalConfiguration.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { state.reloadMedia(context.filesDir) }
 
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -120,22 +121,57 @@ fun MediaScreen(
     val dayItems = selected?.let { s ->
         state.mediaItems.filter { dateKeyOf(it.createdAt) == dateKeyOf(s.createdAt) }
     }.orEmpty()
+    val photoCount = state.mediaItems.count { !it.isVideo }
+    val videoCount = state.mediaItems.count { it.isVideo }
 
     val screenW = with(density) { config.screenWidthDp.dp.toPx() }
     val screenH = with(density) { config.screenHeightDp.dp.toPx() }
     val statusBarPx = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerBottomPx = with(density) { (statusBarPx + 56.dp).toPx() }
+    val headerBottomPx = with(density) { (statusBarPx + 76.dp).toPx() }
 
     fun resolveSourceBounds(raw: Rect?): Rect? {
         if (raw == null || raw == Rect.Zero) return null
         return flightSourceBounds(raw, screenW, screenH, headerBottomPx)
     }
 
+    // Shared open/close progress, lifted out of the day host so the LIST
+    // header — which stays mounted the whole time — can cross-fade itself
+    // against it too. Previously the day host owned this Animatable, so it
+    // only existed while a day was open; the list header had no way to
+    // react to it and was simply hard-covered by the day view's opaque
+    // background, then popped back in the instant the day view unmounted —
+    // that hard pop was the "заголовок мигает" glitch. Now both headers
+    // read the same value and fade in lockstep, so nothing pops.
+    val dayProgress = remember { Animatable(0f) }
+    var closingDay by remember { mutableStateOf(false) }
+
+    // Keyed on the null↔non-null transition only (not on `selected` itself),
+    // so switching photos inside an already-open day via the strip below
+    // does NOT re-run this and restart the fly-in from scratch.
+    LaunchedEffect(selected != null) {
+        if (selected != null) {
+            closingDay = false
+            dayProgress.snapTo(0f)
+            dayProgress.animateTo(1f, FlySpec)
+        }
+    }
+
+    fun closeDay() {
+        if (closingDay || selectedId == null) return
+        closingDay = true
+        scope.launch {
+            dayProgress.animateTo(0f, FlySpec)
+            selectedId = null
+            hideTileId = null
+            sourceBounds = null
+            closingDay = false
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         MomentsListScreen(
             items = state.mediaItems.toList(),
             hideTileId = hideTileId,
-            onBack = onBack,
             onOpenCamera = onOpenCamera,
             onTileBounds = { id, rect -> tileBounds[id] = rect },
             onOpenItem = { item, bounds ->
@@ -153,6 +189,7 @@ fun MediaScreen(
             MomentDayHost(
                 item = selected,
                 dayItems = dayItems,
+                progress = dayProgress,
                 sourceBounds = sourceBounds,
                 onSelect = { next ->
                     selectedId = next.id
@@ -162,14 +199,24 @@ fun MediaScreen(
                     // back to it; otherwise leave every cell visible.
                     hideTileId = if (src != null) next.id else null
                 },
-                onClosed = {
-                    selectedId = null
-                    hideTileId = null
-                    sourceBounds = null
-                },
+                onBack = { closeDay() },
                 onOpenEditor = { showEditor = true },
             )
         }
+
+        // Header — lives above BOTH the grid and the day view (highest
+        // zIndex in this whole screen), so the flying photo always passes
+        // UNDER it, never over it, no matter where its real bounds are.
+        // It cross-fades against the same `dayProgress` the fly uses
+        // instead of relying on the day view's own overlay to hide it, so
+        // it never disappears/reappears in a single frame.
+        MomentsHeader(
+            photoCount = photoCount,
+            videoCount = videoCount,
+            progress = dayProgress,
+            interactive = selectedId == null,
+            onBack = onBack,
+        )
 
         if (showEditor && selected != null) {
             NoteEditorScreen(
@@ -190,14 +237,11 @@ fun MediaScreen(
 private fun MomentsListScreen(
     items: List<MediaItem>,
     hideTileId: String?,
-    onBack: () -> Unit,
     onOpenCamera: () -> Unit,
     onTileBounds: (String, Rect) -> Unit,
     onOpenItem: (MediaItem, Rect) -> Unit,
 ) {
     val groups = remember(items) { groupByDay(items) }
-    val photoCount = items.count { !it.isVideo }
-    val videoCount = items.count { it.isVideo }
     // Real status-bar height, used as a content-padding offset (not a
     // windowInsetsPadding on the grid itself) — see the grid below.
     val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -208,7 +252,7 @@ private fun MomentsListScreen(
                 Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = 56.dp),
+                    .padding(top = 76.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -244,22 +288,10 @@ private fun MomentsListScreen(
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = statusBarInset + 56.dp, bottom = 100.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = statusBarInset + 76.dp, bottom = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalItemSpacing = 6.dp,
             ) {
-                item(span = StaggeredGridItemSpan.FullLine) {
-                    Text(
-                        buildString {
-                            if (photoCount > 0) append("$photoCount фото")
-                            if (photoCount > 0 && videoCount > 0) append(" · ")
-                            if (videoCount > 0) append("$videoCount видео")
-                        },
-                        color = Letify.colors.muted,
-                        style = Letify.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 8.dp, start = 4.dp),
-                    )
-                }
                 groups.forEach { (label, dayItems) ->
                     item(span = StaggeredGridItemSpan.FullLine) {
                         Text(
@@ -283,36 +315,6 @@ private fun MomentsListScreen(
             } // ElasticOverscroll
         } // else
 
-        // Back button — fully transparent, no backing shape, no blur. Floats
-        // directly over the grid; nothing is clipped or tinted underneath it.
-        Box(
-            Modifier
-                .align(Alignment.TopStart)
-                .zIndex(2f)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 12.dp, top = 6.dp)
-                .size(44.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            BackButton(onClick = onBack, tint = Letify.colors.text, glyphSize = 22.dp, tapSize = 44.dp)
-        }
-
-        // Title — fully transparent, floats directly above the grid.
-        Box(
-            Modifier
-                .align(Alignment.TopCenter)
-                .zIndex(2f)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 17.dp),
-        ) {
-            Text(
-                "Моменты",
-                color = Letify.colors.text,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-
         NoFeedbackButton(
             onClick = onOpenCamera,
             modifier = Modifier
@@ -325,6 +327,86 @@ private fun MomentsListScreen(
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("+", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+// Header — a separate top-level layer (sibling of both the grid and the day
+// view in MediaScreen's Box), always mounted and drawn above everything else
+// in this screen. It cross-fades against `dayProgress` instead of being
+// hard-covered/uncovered by the day view's own opaque overlay, which is what
+// used to make it pop in/out in a single frame ("заголовок мигает"). Because
+// it sits above the flying photo at every moment, the photo simply flies in
+// UNDER it — no need to clamp the photo's flight bounds to dodge it.
+//
+// Both islands are a plain translucent "glass" fill rather than a real
+// sampled backdrop blur: a live blur has to re-render every frame the grid
+// scrolls behind it, and that per-frame GPU pass is exactly what caused
+// jank/freezes elsewhere in this app (see the frosted-navbar notes). A flat
+// tint reads as soft/frosted without ever costing a frame.
+@Composable
+private fun MomentsHeader(
+    photoCount: Int,
+    videoCount: Int,
+    progress: Animatable<Float, AnimationVector1D>,
+    interactive: Boolean,
+    onBack: () -> Unit,
+) {
+    val countLabel = buildString {
+        if (photoCount > 0) append("$photoCount фото")
+        if (photoCount > 0 && videoCount > 0) append(" · ")
+        if (videoCount > 0) append("$videoCount видео")
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .zIndex(20f)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(top = 6.dp),
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 12.dp)
+                .size(44.dp)
+                .graphicsLayer { alpha = 1f - progress.value }
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.32f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            BackButton(
+                onClick = onBack,
+                tint = Color.White,
+                glyphSize = 20.dp,
+                tapSize = 44.dp,
+                enabled = interactive,
+            )
+        }
+
+        Column(
+            Modifier
+                .align(Alignment.TopCenter)
+                .graphicsLayer { alpha = 1f - progress.value }
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.Black.copy(alpha = 0.32f))
+                .padding(horizontal = 18.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                "Моменты",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            if (countLabel.isNotEmpty()) {
+                Text(
+                    countLabel,
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
             }
         }
     }
@@ -415,15 +497,13 @@ private fun MomentTile(
 private fun MomentDayHost(
     item: MediaItem,
     dayItems: List<MediaItem>,
+    progress: Animatable<Float, AnimationVector1D>,
     sourceBounds: Rect?,
     onSelect: (MediaItem) -> Unit,
-    onClosed: () -> Unit,
+    onBack: () -> Unit,
     onOpenEditor: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
-    val progress = remember { Animatable(0f) }
-    var closing by remember { mutableStateOf(false) }
     val config = LocalConfiguration.current
 
     // Fixed destination — never remeasure mid-flight.
@@ -437,28 +517,9 @@ private fun MomentDayHost(
         Rect(left, top, left + w, top + h)
     }
 
-    // Runs exactly once per opened session (this composable's whole lifetime,
-    // from tap to close) — NOT keyed on item.id. Keying on item.id meant that
-    // switching photos within the same day (via the strip below) snapped
-    // progress back to 0 and re-ran the fly animation from the *original*
-    // tile's now-stale bounds, which is what read as the photo "duplicating"
-    // mid-flight: the just-settled hero vanished and a second flight started
-    // from a leftover position. There is exactly one photo element for the
-    // whole transition (see MomentDayContent) — it IS the tapped tile,
-    // continuously morphing into the hero slot, never a separate clone.
-    LaunchedEffect(Unit) {
-        progress.snapTo(0f)
-        progress.animateTo(1f, FlySpec)
-    }
-
-    fun close() {
-        if (closing) return
-        closing = true
-        scope.launch {
-            progress.animateTo(0f, FlySpec)
-            onClosed()
-        }
-    }
+    // The open/close drive (`progress`) and the once-per-session LaunchedEffect
+    // now live in MediaScreen — shared with MomentsHeader so both cross-fade
+    // together instead of the header being hard-covered/uncovered in one frame.
 
     Box(Modifier.fillMaxSize().zIndex(10f)) {
         // We pass the Animatable itself, not `.value` — reading `.value` here
@@ -475,7 +536,7 @@ private fun MomentDayHost(
             progress = progress,
             sourceBounds = sourceBounds,
             heroBounds = dst,
-            onBack = { close() },
+            onBack = onBack,
             onSelect = onSelect,
             onOpenEditor = onOpenEditor,
         )
@@ -603,13 +664,15 @@ private fun MomentDayContent(
                         style = Letify.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         fontSize = 22.sp,
-                        modifier = Modifier.padding(horizontal = 20.dp),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     )
                     Text(
                         formatTime(item.createdAt),
                         color = Letify.colors.muted,
                         style = Letify.typography.bodyMedium,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 3.dp, bottom = 14.dp),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 3.dp, bottom = 14.dp),
                     )
 
                     if (dayItems.size > 1) {
@@ -940,11 +1003,12 @@ private fun NoteEditorScreen(
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 
-// Resolve a tapped tile's bounds into a flight source that:
-//  • never starts above the list header (avoids the photo covering «Моменты»)
-//  • never starts off-screen (avoids the squashed open/close when tapping a
-//    partially scrolled-away tile)
-//  • returns null when the tile is mostly invisible → fade instead of fly
+// Resolve a tapped tile's bounds into a flight source: the tile's real
+// on-screen rect, unmodified — no squash, no position clamp — or null when
+// the tile is mostly invisible (behind the header / off-screen), in which
+// case the caller fades instead of flies. The header floats above the fly
+// in its own top layer (see MomentsHeader), so the source rect never needs
+// to be nudged to avoid it.
 private fun flightSourceBounds(
     raw: Rect,
     screenW: Float,
@@ -963,13 +1027,14 @@ private fun flightSourceBounds(
         // Mostly off-screen / under the header — fade, don't fly.
         return null
     }
-    // Keep the full tile size (no aspect squash) but pin the start position
-    // fully on-screen below the header so the morph never begins half-clipped.
-    val w = raw.width
-    val h = raw.height
-    val left = raw.left.coerceIn(0f, (screenW - w).coerceAtLeast(0f))
-    val top = raw.top.coerceIn(headerBottom, (screenH - h).coerceAtLeast(headerBottom))
-    return Rect(left, top, left + w, top + h)
+    // The tile's REAL on-screen rect, untouched — no size squash, no
+    // position clamp. It's fine for this to start/end partly under the
+    // header or past a screen edge: the header now lives in its own
+    // always-on-top layer (MomentsHeader) and the photo simply passes
+    // underneath it, so there's no need to shove the rect into "safe"
+    // bounds anymore. Clamping used to relocate the start point away from
+    // where the tile actually was, which is what read as a "jump".
+    return raw
 }
 
 // A layout-phase-only interpolation from `sourceBounds` to `heroBounds`,

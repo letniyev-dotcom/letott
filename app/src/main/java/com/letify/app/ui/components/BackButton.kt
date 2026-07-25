@@ -58,8 +58,9 @@ fun BackButton(
     modifier: Modifier = Modifier,
     tapSize: Dp = 44.dp,
     glyphSize: Dp = 22.dp,
+    enabled: Boolean = true,
 ) {
-    NoFeedbackButton(onClick = onClick, modifier = modifier.size(tapSize)) {
+    NoFeedbackButton(onClick = onClick, enabled = enabled, modifier = modifier.size(tapSize)) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             BackChevron(tint = tint, size = glyphSize)
         }

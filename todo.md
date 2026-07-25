@@ -241,7 +241,35 @@
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
 
-## r223-moments-fly-fix (versionCode 223)
+## r224-moments-header-fix (versionCode 224)
+- **Прыжок вместо плющения (регрессия r223):** r223's `flightSourceBounds()` clamped the flight's
+  start/end position into "safe" bounds (below the header, on-screen) while keeping full size — no
+  squash, but a real position clamp still moves the rect away from where the tile actually sits, and
+  that jump-to-clamped-position is what read as "photo just jumps". Fix: `flightSourceBounds()` now
+  returns the tile's real on-screen rect completely untouched (no clamp at all); it still returns
+  null (→ fade instead of fly) when the tile is mostly invisible. The photo can now start/end partly
+  under the header or past a screen edge — see next point for why that's fine.
+- **Заголовок «мигал» на закрытии:** the list header (back + "Моменты") lived inside
+  `MomentsListScreen`, a sibling drawn *before* `MomentDayHost` (zIndex 10f) — so it was always fully
+  hard-covered while a day was open and only reappeared the instant `MomentDayHost` unmounted, a
+  one-frame pop. Fix: pulled the fly `Animatable` out of `MomentDayHost` into `MediaScreen` itself
+  (`dayProgress`, shared) and moved the header into its own top-level `MomentsHeader` composable
+  (zIndex 20f, above `MomentDayHost`'s 10f). It's always mounted and cross-fades its own alpha
+  against `dayProgress` (`1f - progress.value`) instead of being occluded — no more pop. Because it's
+  the topmost layer now, the flying photo always passes *underneath* it, which is also what let us
+  drop the clamp above. `enabled = selectedId == null` on its back button stops it from stealing taps
+  meant for the day view's own back button while it's mid-fade.
+- **Заголовок «Моменты» → скруглённый островок + счётчик под ним; кнопка назад → свой круглый
+  островок.** Both are a flat translucent fill (`Color.Black.copy(alpha = 0.32f)`), not a live
+  sampled backdrop blur — a real per-frame blur behind a scrolling photo grid is exactly the kind of
+  GPU pass that caused jank elsewhere in this app (see frosted-navbar notes below), so this trades
+  literal blur for a look that reads as frosted/glass without ever costing a frame, per the "not the
+  slightest lag" ask. Removed the old plain-text count line from the top of the grid (moved into the
+  island, under the title).
+- **Дата/время в шите теперь по центру** (`formatDayTitle` / `formatTime`), matching the centered
+  drag handle above them.
+
+# r223-moments-fly-fix (versionCode 223)
 - **Чёрные пятна под фото:** убраны hardcoded `Color(0xFF1C1C22)` / `0xFF1A1A1E` с тайлов, hero и стрипа → `Letify.colors.container`. При hidden тайл полностью alpha=0 и без content (не рисует подложку). crossfade выключен на grid/hero — больше нет вспышки тёмного placeholder.
 - **Закрытие после смены фото в стрипе летело не туда:** `tileBounds` map обновляется с каждого MomentTile; onSelect переназначает `sourceBounds` + `hideTileId` на выбранный кадр. Close летит в клетку текущего фото, а не исходного тапа.
 - **Приплющивание при тапе по частично уехавшему тайлу:** `flightSourceBounds()` — если видно <45% клетки → fade (src=null), иначе старт с полным размером, позиция прижата ниже хедера / в экран. Больше нет морфа из half-clipped rect.
