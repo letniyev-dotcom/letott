@@ -104,6 +104,8 @@ data class MediaItem(
     val durationLabel: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val note: String = "",
+    /** Optional still frame for videos (file URI). Photos leave this empty. */
+    val thumbUri: String = "",
 )
 
 data class WaterEntry(
@@ -476,6 +478,10 @@ class AppState(
                         durationLabel = if (f.name.endsWith(".mp4")) "видео" else "",
                         createdAt = f.lastModified(),
                         note = mediaNotes[f.name].orEmpty(),
+                        thumbUri = run {
+                            val thumb = java.io.File(dir, f.name + ".thumb.jpg")
+                            if (thumb.isFile) thumb.toURI().toString() else ""
+                        },
                     )
                 }
                 .orEmpty()
@@ -489,6 +495,7 @@ class AppState(
         isVideo: Boolean,
         aspectRatio: Float = 3f / 4f,
         durationLabel: String = "",
+        thumbPath: String = "",
     ) {
         val f = java.io.File(path)
         val item = MediaItem(
@@ -499,6 +506,7 @@ class AppState(
             durationLabel = durationLabel,
             createdAt = f.lastModified(),
             note = mediaNotes[f.name].orEmpty(),
+            thumbUri = if (thumbPath.isNotBlank()) java.io.File(thumbPath).toURI().toString() else "",
         )
         // De-dupe if already present (e.g. reload raced with capture).
         mediaItems.removeAll { it.id == item.id }

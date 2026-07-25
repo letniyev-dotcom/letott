@@ -434,6 +434,40 @@ fun CameraCaptureScreen(
     fun stamp(): String =
         SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
 
+    /** First-frame JPEG next to the mp4 so Coil can show a still in the grid. */
+    fun extractVideoThumb(videoFile: File): String {
+        val out = File(videoFile.parentFile, videoFile.name + ".thumb.jpg")
+        return try {
+            val r = android.media.MediaMetadataRetriever()
+            r.setDataSource(videoFile.absolutePath)
+            val frame = r.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val durationMs = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            r.release()
+            if (frame != null) {
+                out.outputStream().use { frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, it) }
+                frame.recycle()
+            }
+            // side-channel duration via file name is awkward — return path; duration formatted by caller
+            out.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "video thumb failed", e)
+            ""
+        }
+    }
+
+    fun formatVideoDuration(videoFile: File): String {
+        return try {
+            val r = android.media.MediaMetadataRetriever()
+            r.setDataSource(videoFile.absolutePath)
+            val ms = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            r.release()
+            val sec = (ms / 1000).toInt().coerceAtLeast(1)
+            "%d:%02d".format(sec / 60, sec % 60)
+        } catch (_: Exception) {
+            "видео"
+        }
+    }
+
     fun doTakePhoto() {
         if (captureBusy || isRecording || boundCamera == null) return
         captureBusy = true
@@ -504,17 +538,21 @@ fun CameraCaptureScreen(
                         is VideoRecordEvent.Finalize -> {
                             isRecording = false
                             activeRecording = null
-                            if (!event.hasError()) {
+                            if (!event.hasError() && file.exists() && file.length() > 0L) {
+                                val thumb = extractVideoThumb(file)
+                                val label = formatVideoDuration(file)
                                 state.addMedia(
                                     path = file.absolutePath,
                                     isVideo = true,
                                     aspectRatio = 3f / 4f,
-                                    durationLabel = "видео",
+                                    durationLabel = label,
+                                    thumbPath = thumb,
                                 )
-                                lastThumb = file.absolutePath
+                                lastThumb = thumb.ifBlank { file.absolutePath }
                                 sessionCaptureCount++
-                                // Video thumb is still a useful open-placeholder.
-                                CameraPrewarm.savePlaceholderFromFile(context, file.absolutePath)
+                                if (thumb.isNotBlank()) {
+                                    CameraPrewarm.savePlaceholderFromFile(context, thumb)
+                                }
                             } else {
                                 Log.e(TAG, "video finalize error: ${event.error}", event.cause)
                                 runCatching { file.delete() }

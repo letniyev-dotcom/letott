@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 215
-        versionName = "r215-modifier-typo"
+        versionCode = 217
+        versionName = "r217-morph-video"
         vectorDrawables { useSupportLibrary = true }
     }
 

@@ -292,7 +292,7 @@ private fun MomentTile(item: MediaItem, hidden: Boolean, onClick: (Rect) -> Unit
                 .graphicsLayer { alpha = if (hidden) 0f else 1f },
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(item.uri).crossfade(120).build(),
+                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(120).build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -345,7 +345,7 @@ private fun MomentDayHost(
     var closing by remember { mutableStateOf(false) }
     val config = LocalConfiguration.current
 
-    // Fixed destination geometry — never remeasure mid-flight (was causing jumps).
+    // Fixed destination — never remeasure mid-flight.
     val dst = with(density) {
         val maxH = (config.screenHeightDp * 0.52f).dp.toPx()
         val w = (config.screenWidthDp.dp - 32.dp).toPx()
@@ -372,21 +372,21 @@ private fun MomentDayHost(
 
     val p = progress.value
     val src = sourceBounds
+    // Single photo only: either flying clone OR settled hero — never both.
     val flying = src != null && p < 0.995f
+    val settled = !flying
 
     Box(Modifier.fillMaxSize().zIndex(10f)) {
-        // Detail slides up from bottom
+        // Detail FADE (no slide-from-bottom)
         Box(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    translationY = (1f - p) * size.height
-                },
+                .graphicsLayer { alpha = p },
         ) {
             MomentDayContent(
                 item = item,
                 dayItems = dayItems,
-                photoVisible = !flying,
+                photoVisible = settled,
                 photoHeightPx = dst.height,
                 onBack = { close() },
                 onSelect = onSelect,
@@ -394,7 +394,7 @@ private fun MomentDayHost(
             )
         }
 
-        // Flying clone — only while in flight
+        // ONE flying photo (source tile is hidden)
         if (flying && src != null) {
             val l = src.left + (dst.left - src.left) * p
             val t = src.top + (dst.top - src.top) * p
@@ -409,11 +409,16 @@ private fun MomentDayHost(
                     .zIndex(20f),
             ) {
                 AsyncImage(
-                    model = item.uri,
+                    model = mediaDisplayUri(item),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                 )
+                if (item.isVideo) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("▶", color = Color.White, fontSize = 28.sp)
+                    }
+                }
             }
         }
     }
@@ -445,20 +450,26 @@ private fun MomentDayContent(
     val elastic = rememberElasticOverscroll(maxVertical = 56.dp, maxHorizontal = 0.dp)
     val stripElastic = rememberElasticOverscroll(maxVertical = 0.dp, maxHorizontal = 48.dp)
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF0E0E10))) {
+    Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         // ── Fixed photo under the sheet ──
+        // Photo scales down slightly as the sheet covers it.
+        val photoScale = 1f - (scroll.value / photoHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f) * 0.12f
         Box(
             Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 98.dp, start = 16.dp, end = 16.dp)
                 .fillMaxWidth()
                 .height(photoH)
+                .graphicsLayer {
+                    alpha = if (photoVisible) 1f else 0f
+                    scaleX = photoScale
+                    scaleY = photoScale
+                }
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF1A1A1E))
-                .graphicsLayer { alpha = if (photoVisible) 1f else 0f },
+                .background(Color(0xFF1A1A1E)),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(item.uri).crossfade(false).build(),
+                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(false).build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -488,9 +499,10 @@ private fun MomentDayContent(
                 Column(
                     Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 520.dp)
                         .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                        .background(Letify.colors.container)
-                        .padding(bottom = 40.dp),
+                        .background(Letify.colors.bg)
+                        .padding(bottom = 48.dp),
                 ) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                         Box(
@@ -546,7 +558,7 @@ private fun MomentDayContent(
                                             .background(Color(0xFF1C1C22)),
                                     ) {
                                         AsyncImage(
-                                            model = m.uri,
+                                            model = mediaDisplayUri(m),
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop,
@@ -566,7 +578,7 @@ private fun MomentDayContent(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Letify.colors.bg)
+                                .background(Letify.colors.container)
                                 .padding(14.dp),
                         ) {
                             Text(
@@ -625,7 +637,7 @@ private fun MomentDayContent(
                                 .fillMaxWidth()
                                 .padding(horizontal = 20.dp)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Letify.colors.bg)
+                                .background(Letify.colors.container)
                                 .padding(horizontal = 14.dp),
                         ) {
                             tasks.forEachIndexed { i, task ->
@@ -638,7 +650,7 @@ private fun MomentDayContent(
                                         Modifier
                                             .size(28.dp)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(Letify.colors.container),
+                                            .background(Letify.colors.bg),
                                         contentAlignment = Alignment.Center,
                                     ) {
                                         SolarIcon(name = task.icon, tint = task.color, size = 14.dp)
@@ -680,7 +692,7 @@ private fun MomentDayContent(
                                 .fillMaxWidth()
                                 .padding(horizontal = 20.dp)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Letify.colors.bg)
+                                .background(Letify.colors.container)
                                 .padding(horizontal = 14.dp),
                         ) {
                             state.meals.forEachIndexed { i, meal ->
@@ -692,7 +704,7 @@ private fun MomentDayContent(
                                         Modifier
                                             .size(28.dp)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(Letify.colors.container),
+                                            .background(Letify.colors.bg),
                                         contentAlignment = Alignment.Center,
                                     ) {
                                         SolarIcon(name = meal.icon, tint = meal.color, size = 14.dp)
@@ -721,12 +733,11 @@ private fun MomentDayContent(
             }
         }
 
-        // Fixed header
+        // Fixed header — no dim overlay
         Box(
             Modifier
                 .fillMaxWidth()
                 .zIndex(30f)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent)))
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         ) {
@@ -762,7 +773,7 @@ private fun DayStat(modifier: Modifier, value: String, label: String) {
     Column(
         modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(Letify.colors.bg)
+            .background(Letify.colors.container)
             .padding(vertical = 12.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -838,6 +849,9 @@ private fun NoteEditorScreen(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+private fun mediaDisplayUri(item: MediaItem): String =
+    item.thumbUri.ifBlank { item.uri }
 
 private fun dateKeyOf(epochMs: Long): String =
     Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().toString()
