@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 213
-        versionName = "r213-sheet-fly-elastic"
+        versionCode = 214
+        versionName = "r214-compile-fix"
         vectorDrawables { useSupportLibrary = true }
     }
 

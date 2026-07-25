@@ -1,10 +1,11 @@
-package com.letify.app.ui.screens
-
 @file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
+package com.letify.app.ui.screens
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -470,8 +471,8 @@ private fun MomentDayContent(
         }
 
         // ── Scroll: spacer reveals photo, sheet rides up over it ──
-        androidx.compose.runtime.CompositionLocalProvider(
-            androidx.compose.foundation.LocalOverscrollConfiguration provides null,
+        CompositionLocalProvider(
+            LocalOverscrollConfiguration provides null,
         ) {
             Column(
                 Modifier
@@ -739,6 +740,34 @@ private fun MomentDayContent(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun CircleHeaderBtn(onClick: () -> Unit, content: @Composable () -> Unit) {
+    NoFeedbackButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.28f)),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+    }
+}
+
+@Composable
+private fun DayStat(modifier: Modifier, value: String, label: String) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Letify.colors.bg)
+            .padding(vertical = 12.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(value, color = Letify.colors.text, style = Letify.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text(label, color = Letify.colors.muted, style = Letify.typography.labelSmall, modifier = Modifier.padding(top = 3.dp))
     }
 }
 
