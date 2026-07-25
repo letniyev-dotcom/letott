@@ -905,8 +905,23 @@ private fun UserIdentity(
             fontWeight = FontWeight.Bold,
         )
         if (!photoUrl.isNullOrBlank()) {
+            // IMPORTANT: this Box (and therefore this whole branch) recomposes on
+            // EVERY frame of the Home⇄Profile flight (t changes ~60×/sec for
+            // HeroFlightMs). Building the ImageRequest inline used to allocate a
+            // brand-new request each frame — Coil has no equals() on ImageRequest,
+            // so every frame looked like a genuinely new model: the painter reset
+            // to Loading and re-resolved (even from memory cache) before drawing
+            // Success again. That Loading→Success flip 30+ times in half a second
+            // was the flight's "мигает" + jank. Keying this on photoUrl (not on
+            // progress/t) means the SAME request instance survives the whole
+            // flight — Coil keeps the already-resolved painter and just redraws it
+            // under the animated graphicsLayer transform, so only the transform
+            // (translation/scale) changes per frame, never the image state.
+            val avatarRequest = remember(context, photoUrl) {
+                ImageRequest.Builder(context).data(photoUrl).crossfade(false).build()
+            }
             AsyncImage(
-                model = ImageRequest.Builder(context).data(photoUrl).crossfade(false).build(),
+                model = avatarRequest,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

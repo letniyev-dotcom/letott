@@ -54,7 +54,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -88,9 +87,6 @@ import com.letify.app.ui.state.Dates
 import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.state.MediaItem
 import com.letify.app.ui.theme.Letify
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -149,12 +145,6 @@ fun MediaScreen(
     val dayProgress = remember { Animatable(0f) }
     var closingDay by remember { mutableStateOf(false) }
 
-    // Real sampled backdrop for the header island + back button "liquid glass"
-    // below — the grid (and day sheet) draw into this source, and the header
-    // reads it through `hazeChild` for a genuine blurred/refracted glass look
-    // instead of a flat tint.
-    val hazeState = remember { HazeState() }
-
     // Keyed on the null↔non-null transition only (not on `selected` itself),
     // so switching photos inside an already-open day via the strip below
     // does NOT re-run this and restart the fly-in from scratch.
@@ -179,41 +169,39 @@ fun MediaScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
-        Box(Modifier.fillMaxSize().haze(hazeState)) {
-            MomentsListScreen(
-                items = state.mediaItems.toList(),
-                hideTileId = hideTileId,
-                onOpenCamera = onOpenCamera,
-                onTileBounds = { id, rect -> tileBounds[id] = rect },
-                onOpenItem = { item, bounds ->
-                    val src = resolveSourceBounds(bounds)
-                    sourceBounds = src
-                    // Only hide the grid cell when we actually fly from it —
-                    // a fade-open (src == null) must leave the cell visible so
-                    // there is no empty hole under a partially scrolled tile.
-                    hideTileId = if (src != null) item.id else null
-                    selectedId = item.id
-                },
-            )
+        MomentsListScreen(
+            items = state.mediaItems.toList(),
+            hideTileId = hideTileId,
+            onOpenCamera = onOpenCamera,
+            onTileBounds = { id, rect -> tileBounds[id] = rect },
+            onOpenItem = { item, bounds ->
+                val src = resolveSourceBounds(bounds)
+                sourceBounds = src
+                // Only hide the grid cell when we actually fly from it —
+                // a fade-open (src == null) must leave the cell visible so
+                // there is no empty hole under a partially scrolled tile.
+                hideTileId = if (src != null) item.id else null
+                selectedId = item.id
+            },
+        )
 
-            if (selected != null) {
-                MomentDayHost(
-                    item = selected,
-                    dayItems = dayItems,
-                    progress = dayProgress,
-                    sourceBounds = sourceBounds,
-                    onSelect = { next ->
-                        selectedId = next.id
-                        val src = resolveSourceBounds(tileBounds[next.id])
-                        sourceBounds = src
-                        // Hide the newly selected grid cell only when we can fly
-                        // back to it; otherwise leave every cell visible.
-                        hideTileId = if (src != null) next.id else null
-                    },
-                    onBack = { closeDay() },
-                    onOpenEditor = { showEditor = true },
-                )
-            }
+        if (selected != null) {
+            MomentDayHost(
+                item = selected,
+                dayItems = dayItems,
+                progress = dayProgress,
+                sourceBounds = sourceBounds,
+                onSelect = { next ->
+                    selectedId = next.id
+                    val src = resolveSourceBounds(tileBounds[next.id])
+                    sourceBounds = src
+                    // Hide the newly selected grid cell only when we can fly
+                    // back to it; otherwise leave every cell visible.
+                    hideTileId = if (src != null) next.id else null
+                },
+                onBack = { closeDay() },
+                onOpenEditor = { showEditor = true },
+            )
         }
 
         // Header — lives above BOTH the grid and the day view (highest
@@ -228,7 +216,6 @@ fun MediaScreen(
             progress = dayProgress,
             interactive = selectedId == null,
             onBack = onBack,
-            hazeState = hazeState,
         )
 
         if (showEditor && selected != null) {
@@ -345,28 +332,6 @@ private fun MomentsListScreen(
     }
 }
 
-// A tasteful approximation of iOS 26 "Liquid Glass": a real sampled +
-// blurred backdrop (via Haze, reading `hazeState` filled in by the grid/day
-// content below) instead of a flat tint, plus a bright top-to-bottom rim
-// highlight — the cue that reads as convex glass catching light rather than
-// plain frosted plastic. `shape` drives both the blur's clip and the rim.
-// Deliberately built on just the `hazeChild(state, shape)` overload — the
-// one signature that's been stable across every Haze release since 0.4.0 —
-// with the tint and shine layered on top as plain modifiers, rather than
-// HazeStyle/HazeTint, whose constructor shape has changed release to
-// release and doesn't match the pinned 0.7.3 build here.
-private fun Modifier.liquidGlass(hazeState: HazeState, shape: Shape): Modifier = this
-    .clip(shape)
-    .hazeChild(state = hazeState, shape = shape)
-    .background(Color.Black.copy(alpha = 0.30f), shape)
-    .border(
-        width = 1.dp,
-        brush = Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.08f)),
-        ),
-        shape = shape,
-    )
-
 // Header — a separate top-level layer (sibling of both the grid and the day
 // view in MediaScreen's Box), always mounted and drawn above everything else
 // in this screen. It cross-fades against `dayProgress` instead of being
@@ -374,6 +339,12 @@ private fun Modifier.liquidGlass(hazeState: HazeState, shape: Shape): Modifier =
 // used to make it pop in/out in a single frame ("заголовок мигает"). Because
 // it sits above the flying photo at every moment, the photo simply flies in
 // UNDER it — no need to clamp the photo's flight bounds to dodge it.
+//
+// Both islands are a plain translucent "glass" fill rather than a real
+// sampled backdrop blur: a live blur has to re-render every frame the grid
+// scrolls behind it, and that per-frame GPU pass is exactly what caused
+// jank/freezes elsewhere in this app (see the frosted-navbar notes). A flat
+// tint reads as soft/frosted without ever costing a frame.
 @Composable
 private fun MomentsHeader(
     photoCount: Int,
@@ -381,7 +352,6 @@ private fun MomentsHeader(
     progress: Animatable<Float, AnimationVector1D>,
     interactive: Boolean,
     onBack: () -> Unit,
-    hazeState: HazeState,
 ) {
     val countLabel = buildString {
         if (photoCount > 0) append("$photoCount фото")
@@ -401,34 +371,25 @@ private fun MomentsHeader(
                 .padding(start = 12.dp)
                 .size(44.dp)
                 .graphicsLayer { alpha = 1f - progress.value }
-                .liquidGlass(hazeState, CircleShape),
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.32f)),
             contentAlignment = Alignment.Center,
         ) {
-            // When a day is open (interactive == false) this whole hot zone
-            // must NOT be part of the composition at all — not just have its
-            // onClick disabled. A disabled Modifier.clickable still consumes
-            // the tap so it never reaches whatever is underneath, which is
-            // exactly what silently ate every tap on the open moment card's
-            // own back button (same top-left corner, lower z-order). Falling
-            // back to a bare, non-clickable chevron here lets touches pass
-            // straight through to that button.
-            if (interactive) {
-                BackButton(
-                    onClick = onBack,
-                    tint = Color.White,
-                    glyphSize = 20.dp,
-                    tapSize = 44.dp,
-                )
-            } else {
-                BackChevron(tint = Color.White, size = 20.dp)
-            }
+            BackButton(
+                onClick = onBack,
+                tint = Color.White,
+                glyphSize = 20.dp,
+                tapSize = 44.dp,
+                enabled = interactive,
+            )
         }
 
         Column(
             Modifier
                 .align(Alignment.TopCenter)
                 .graphicsLayer { alpha = 1f - progress.value }
-                .liquidGlass(hazeState, RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.Black.copy(alpha = 0.32f))
                 .padding(horizontal = 18.dp, vertical = 9.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

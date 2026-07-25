@@ -241,6 +241,21 @@
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
 
+## r225-profile-flight-avatar-flicker (versionCode 225)
+- **Полёт авы Home↔Profile лагал/дёргался/мигал:** `UserIdentity` — единственный композабл,
+  рисующий аву+имя во время полёта — перекомпонуется на КАЖДЫЙ кадр анимации (t меняется
+  ~60 раз/сек все HeroFlightMs=520мс, это специально, см. `IdentityFlightHost`). Фото аватарки
+  строило `ImageRequest.Builder(context).data(photoUrl).build()` прямо в теле композабла —
+  новый объект на каждый кадр. У `ImageRequest` нет своего `equals()`, поэтому Coil на каждый
+  кадр видел «новую» модель и заново гонял фото через весь пайплайн загрузки (сброс в
+  Loading → повторное разрешение из кэша → Success), даже когда фото уже было в памяти. Это
+  Loading→Success мигание 30+ раз за 520мс и было «мигает экран»/лагами полёта.
+- ФИКС: `ImageRequest` вынесен в `remember(context, photoUrl)` — один и тот же инстанс
+  переживает весь полёт, Coil не перезапускает загрузку, меняется только
+  translation/scale в graphicsLayer. Сама анимация (тайминги, easing, парал­лакс,
+  z-order) не тронута — только устранена причина мигания/лага.
+- versionCode 224→225.
+
 ## r224-moments-header-fix (versionCode 224)
 - **Прыжок вместо плющения (регрессия r223):** r223's `flightSourceBounds()` clamped the flight's
   start/end position into "safe" bounds (below the header, on-screen) while keeping full size — no
