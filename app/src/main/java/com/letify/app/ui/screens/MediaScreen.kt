@@ -3,7 +3,6 @@
 package com.letify.app.ui.screens
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.LocalOverscrollConfiguration
@@ -49,8 +48,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -62,6 +66,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -201,7 +208,7 @@ private fun MomentsListScreen(
             ElasticOverscroll {
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).haze(hazeState),
+                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).haze(hazeState).fadeTopEdge(64.dp),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 56.dp, bottom = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalItemSpacing = 6.dp,
@@ -362,20 +369,15 @@ private fun MomentDayHost(
     var closing by remember { mutableStateOf(false) }
     val config = LocalConfiguration.current
 
-    // Hero slot. Height is animated (not snapped) so switching to a
-    // differently-shaped photo via the day strip resizes smoothly.
-    val targetHeightPx = with(density) {
+    // Fixed destination — never remeasure mid-flight.
+    val dst = with(density) {
         val maxH = (config.screenHeightDp * 0.52f).dp.toPx()
         val w = (config.screenWidthDp.dp - 32.dp).toPx()
         val ratio = item.aspectRatio.coerceIn(0.55f, 1.6f)
-        (w / ratio).coerceAtMost(maxH)
-    }
-    val animatedHeightPx by animateFloatAsState(targetHeightPx, tween(260), label = "heroHeight")
-    val dst = with(density) {
-        val w = (config.screenWidthDp.dp - 32.dp).toPx()
+        val h = (w / ratio).coerceAtMost(maxH)
         val left = 16.dp.toPx()
         val top = 98.dp.toPx()
-        Rect(left, top, left + w, top + animatedHeightPx)
+        Rect(left, top, left + w, top + h)
     }
 
     // Runs exactly once per opened session (this composable's whole lifetime,
@@ -402,10 +404,18 @@ private fun MomentDayHost(
     }
 
     Box(Modifier.fillMaxSize().zIndex(10f)) {
+        // We pass the Animatable itself, not `.value` — reading `.value` here
+        // would make THIS composable re-run every animation frame, and with
+        // it the entire heavy MomentDayContent tree below (stats, tasks,
+        // meals, day strip — dozens of composables) at 60fps. That was the
+        // real cause of the lag and the "wrong size on close" glitch: frames
+        // were being dropped under that recomposition load. MomentDayContent
+        // only reads `.value` inside layout/graphicsLayer lambdas (the draw
+        // & layout phases), which re-run cheaply without recomposing.
         MomentDayContent(
             item = item,
             dayItems = dayItems,
-            progress = progress.value,
+            progress = progress,
             sourceBounds = sourceBounds,
             heroBounds = dst,
             onBack = { close() },
@@ -419,7 +429,7 @@ private fun MomentDayHost(
 private fun MomentDayContent(
     item: MediaItem,
     dayItems: List<MediaItem>,
-    progress: Float,
+    progress: Animatable<Float>,
     sourceBounds: Rect?,
     heroBounds: Rect,
     onBack: () -> Unit,
@@ -441,45 +451,37 @@ private fun MomentDayContent(
     val stripScroll = rememberScrollState()
     val elastic = rememberElasticOverscroll(maxVertical = 56.dp, maxHorizontal = 0.dp)
     val stripElastic = rememberElasticOverscroll(maxVertical = 0.dp, maxHorizontal = 48.dp)
-    // Rest of the screen (header, sheet) fades in over the flight. The photo
-    // itself never fades — it's a single element that MOVES from the tapped
-    // tile into the hero slot, so it stays fully opaque and visible the whole
-    // time. That's the fix for the "duplicate photo" glitch: previously a
-    // separate flying clone and a separate settled hero image handed off to
-    // each other mid-air; now there's only ever one photo composable.
-    val contentAlpha = progress.coerceIn(0f, 1f)
 
-    Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
+    Box(Modifier.fillMaxSize()) {
+        // Background fill fades in with the rest of the UI (never fully opaque
+        // until the flight settles) — this is what lets the grid list show
+        // through behind it while flying. Reading progress.value inside
+        // graphicsLayer{} only invalidates this draw layer, not the whole
+        // composable, so it stays cheap every frame.
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = progress.value }.background(Letify.colors.bg))
+
         // ── The one photo — same element for the whole open transition ──
-        // While src != null and progress < 1, its rect is lerped from the
-        // tapped grid tile to the hero slot. Once settled it scales down
-        // slightly as the sheet is scrolled up over it.
-        val src = sourceBounds
-        val photoRect = if (src != null && progress < 1f) {
-            Rect(
-                left = src.left + (heroBounds.left - src.left) * progress,
-                top = src.top + (heroBounds.top - src.top) * progress,
-                right = src.right + (heroBounds.right - src.right) * progress,
-                bottom = src.bottom + (heroBounds.bottom - src.bottom) * progress,
-            )
-        } else heroBounds
-        val photoRadiusDp = if (src != null) {
-            14.dp + (20.dp - 14.dp) * progress.coerceIn(0f, 1f)
-        } else 20.dp
-        val photoScale = 1f - (scroll.value / photoHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f) * 0.12f
+        // Position/size come from a layout()-phase read of progress.value
+        // (measure only, no recomposition); scale/corner-radius come from a
+        // graphicsLayer (draw phase, no recomposition either). It never
+        // fades — it's a single element that MOVES from the tapped tile into
+        // the hero slot, always fully opaque and visible.
         Box(
             Modifier
-                .offset { IntOffset(photoRect.left.roundToInt(), photoRect.top.roundToInt()) }
-                .size(with(density) { photoRect.width.toDp() }, with(density) { photoRect.height.toDp() })
+                .flightBounds(progress, sourceBounds, heroBounds)
                 .graphicsLayer {
-                    scaleX = photoScale
-                    scaleY = photoScale
+                    val p = progress.value.coerceIn(0f, 1f)
+                    val hasSrc = sourceBounds != null
+                    val scale = 1f - (scroll.value / photoHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f) * 0.12f
+                    scaleX = scale
+                    scaleY = scale
+                    shape = RoundedCornerShape(if (hasSrc) 14.dp + (20.dp - 14.dp) * p else 20.dp)
+                    clip = true
                 }
-                .clip(RoundedCornerShape(photoRadiusDp))
                 .background(Color(0xFF1A1A1E)),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(200).build(),
+                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(false).build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -498,7 +500,7 @@ private fun MomentDayContent(
             Column(
                 Modifier
                     .fillMaxSize()
-                    .graphicsLayer { alpha = contentAlpha }
+                    .graphicsLayer { alpha = progress.value }
                     .nestedScroll(elastic.connection)
                     .graphicsLayer { translationY = elastic.verticalOverscroll.floatValue }
                     .verticalScroll(scroll),
@@ -749,7 +751,7 @@ private fun MomentDayContent(
             Modifier
                 .fillMaxWidth()
                 .zIndex(30f)
-                .graphicsLayer { alpha = contentAlpha }
+                .graphicsLayer { alpha = progress.value }
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         ) {
@@ -861,6 +863,60 @@ private fun NoteEditorScreen(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+// Smoothly fades scrolled content out near the top edge instead of letting
+// the list clip it with a hard line right at the status bar. This is a mask
+// on the content's own alpha (BlendMode.DstIn), not a drawn scrim on top —
+// it doesn't paint over anything, it just lets the text/photos taper off.
+private fun Modifier.fadeTopEdge(height: Dp): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val h = height.toPx()
+        drawRect(
+            brush = Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black), startY = 0f, endY = h),
+            size = Size(size.width, h),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+
+// A layout-phase-only interpolation from `sourceBounds` to `heroBounds`,
+// driven by `progress`. Deliberately implemented with Modifier.layout
+// (not a plain composable read of progress.value) so that reading the
+// animation every frame only triggers remeasure of this one node — never a
+// recomposition of the caller. Recomposing the whole detail screen (stats,
+// tasks, meals, day strip) 60×/sec was the actual cause of the animation
+// lag and the "wrong size after closing" glitch.
+private fun Modifier.flightBounds(
+    progress: Animatable<Float>,
+    sourceBounds: Rect?,
+    heroBounds: Rect,
+): Modifier = this
+    .offset {
+        val p = progress.value
+        val src = sourceBounds
+        val left = if (src != null && p < 1f) src.left + (heroBounds.left - src.left) * p else heroBounds.left
+        val top = if (src != null && p < 1f) src.top + (heroBounds.top - src.top) * p else heroBounds.top
+        IntOffset(left.roundToInt(), top.roundToInt())
+    }
+    .layout { measurable, _ ->
+        val p = progress.value
+        val src = sourceBounds
+        val rect = if (src != null && p < 1f) {
+            Rect(
+                left = src.left + (heroBounds.left - src.left) * p,
+                top = src.top + (heroBounds.top - src.top) * p,
+                right = src.right + (heroBounds.right - src.right) * p,
+                bottom = src.bottom + (heroBounds.bottom - src.bottom) * p,
+            )
+        } else heroBounds
+        val w = rect.width.roundToInt().coerceAtLeast(1)
+        val h = rect.height.roundToInt().coerceAtLeast(1)
+        val placeable = measurable.measure(Constraints.fixed(w, h))
+        layout(w, h) {
+            placeable.placeRelative(0, 0)
+        }
+    }
 
 private fun mediaDisplayUri(item: MediaItem): String =
     item.thumbUri.ifBlank { item.uri }
