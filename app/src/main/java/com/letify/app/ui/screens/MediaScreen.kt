@@ -3,6 +3,7 @@
 package com.letify.app.ui.screens
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.LocalOverscrollConfiguration
@@ -49,7 +50,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -69,7 +69,11 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.letify.app.ui.components.BackButton
+import com.letify.app.ui.components.BackChevron
 import com.letify.app.ui.components.rememberElasticOverscroll
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 import com.letify.app.ui.components.ElasticOverscroll
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.CompositionLocalProvider
@@ -160,16 +164,17 @@ private fun MomentsListScreen(
     onOpenCamera: () -> Unit,
     onOpenItem: (MediaItem, Rect) -> Unit,
 ) {
-    val bg = Letify.colors.bg
     val groups = remember(items) { groupByDay(items) }
     val photoCount = items.count { !it.isVideo }
     val videoCount = items.count { it.isVideo }
+    val hazeState = remember { HazeState() }
 
     Box(Modifier.fillMaxSize()) {
         if (items.isEmpty()) {
             Box(
                 Modifier
                     .fillMaxSize()
+                    .haze(hazeState)
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(top = 56.dp),
                 contentAlignment = Alignment.Center,
@@ -196,7 +201,7 @@ private fun MomentsListScreen(
             ElasticOverscroll {
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
+                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).haze(hazeState),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 56.dp, bottom = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalItemSpacing = 6.dp,
@@ -235,26 +240,38 @@ private fun MomentsListScreen(
             } // ElasticOverscroll
         } // else
 
+        // Back button — its own small blurred, rounded island. No full-width scrim.
         Box(
             Modifier
-                .fillMaxWidth()
+                .align(Alignment.TopStart)
                 .zIndex(2f)
-                .background(Brush.verticalGradient(listOf(bg, bg.copy(alpha = 0.92f), bg.copy(alpha = 0f))))
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 2.dp, bottom = 12.dp),
+                .padding(start = 12.dp, top = 6.dp)
+                .size(44.dp)
+                .hazeChild(state = hazeState) { shape = CircleShape }
+                .background(Letify.colors.bg.copy(alpha = 0.45f), CircleShape),
+            contentAlignment = Alignment.Center,
         ) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                BackButton(onClick = onBack, tint = Letify.colors.text, glyphSize = 24.dp)
-                Text(
-                    "Моменты",
-                    color = Letify.colors.text,
-                    style = Letify.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.size(44.dp))
-            }
+            BackButton(onClick = onBack, tint = Letify.colors.text, glyphSize = 22.dp, tapSize = 44.dp)
+        }
+
+        // Title — its own blurred, rounded island, floating above the grid.
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .zIndex(2f)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = 6.dp)
+                .hazeChild(state = hazeState) { shape = RoundedCornerShape(20.dp) }
+                .background(Letify.colors.bg.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                .padding(horizontal = 22.dp, vertical = 11.dp),
+        ) {
+            Text(
+                "Моменты",
+                color = Letify.colors.text,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
 
         NoFeedbackButton(
@@ -345,18 +362,32 @@ private fun MomentDayHost(
     var closing by remember { mutableStateOf(false) }
     val config = LocalConfiguration.current
 
-    // Fixed destination — never remeasure mid-flight.
-    val dst = with(density) {
+    // Hero slot. Height is animated (not snapped) so switching to a
+    // differently-shaped photo via the day strip resizes smoothly.
+    val targetHeightPx = with(density) {
         val maxH = (config.screenHeightDp * 0.52f).dp.toPx()
         val w = (config.screenWidthDp.dp - 32.dp).toPx()
         val ratio = item.aspectRatio.coerceIn(0.55f, 1.6f)
-        val h = (w / ratio).coerceAtMost(maxH)
+        (w / ratio).coerceAtMost(maxH)
+    }
+    val animatedHeightPx by animateFloatAsState(targetHeightPx, tween(260), label = "heroHeight")
+    val dst = with(density) {
+        val w = (config.screenWidthDp.dp - 32.dp).toPx()
         val left = 16.dp.toPx()
         val top = 98.dp.toPx()
-        Rect(left, top, left + w, top + h)
+        Rect(left, top, left + w, top + animatedHeightPx)
     }
 
-    LaunchedEffect(item.id) {
+    // Runs exactly once per opened session (this composable's whole lifetime,
+    // from tap to close) — NOT keyed on item.id. Keying on item.id meant that
+    // switching photos within the same day (via the strip below) snapped
+    // progress back to 0 and re-ran the fly animation from the *original*
+    // tile's now-stale bounds, which is what read as the photo "duplicating"
+    // mid-flight: the just-settled hero vanished and a second flight started
+    // from a leftover position. There is exactly one photo element for the
+    // whole transition (see MomentDayContent) — it IS the tapped tile,
+    // continuously morphing into the hero slot, never a separate clone.
+    LaunchedEffect(Unit) {
         progress.snapTo(0f)
         progress.animateTo(1f, FlySpec)
     }
@@ -370,57 +401,17 @@ private fun MomentDayHost(
         }
     }
 
-    val p = progress.value
-    val src = sourceBounds
-    // Single photo only: either flying clone OR settled hero — never both.
-    val flying = src != null && p < 0.995f
-    val settled = !flying
-
     Box(Modifier.fillMaxSize().zIndex(10f)) {
-        // Detail FADE (no slide-from-bottom)
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer { alpha = p },
-        ) {
-            MomentDayContent(
-                item = item,
-                dayItems = dayItems,
-                photoVisible = settled,
-                photoHeightPx = dst.height,
-                onBack = { close() },
-                onSelect = onSelect,
-                onOpenEditor = onOpenEditor,
-            )
-        }
-
-        // ONE flying photo (source tile is hidden)
-        if (flying && src != null) {
-            val l = src.left + (dst.left - src.left) * p
-            val t = src.top + (dst.top - src.top) * p
-            val w = src.width + (dst.width - src.width) * p
-            val h = src.height + (dst.height - src.height) * p
-            val radius = with(density) { 14.dp.toPx() + (20.dp.toPx() - 14.dp.toPx()) * p }
-            Box(
-                Modifier
-                    .offset { IntOffset(l.roundToInt(), t.roundToInt()) }
-                    .size(with(density) { w.toDp() }, with(density) { h.toDp() })
-                    .clip(RoundedCornerShape(with(density) { radius.toDp() }))
-                    .zIndex(20f),
-            ) {
-                AsyncImage(
-                    model = mediaDisplayUri(item),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-                if (item.isVideo) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("▶", color = Color.White, fontSize = 28.sp)
-                    }
-                }
-            }
-        }
+        MomentDayContent(
+            item = item,
+            dayItems = dayItems,
+            progress = progress.value,
+            sourceBounds = sourceBounds,
+            heroBounds = dst,
+            onBack = { close() },
+            onSelect = onSelect,
+            onOpenEditor = onOpenEditor,
+        )
     }
 }
 
@@ -428,8 +419,9 @@ private fun MomentDayHost(
 private fun MomentDayContent(
     item: MediaItem,
     dayItems: List<MediaItem>,
-    photoVisible: Boolean,
-    photoHeightPx: Float,
+    progress: Float,
+    sourceBounds: Rect?,
+    heroBounds: Rect,
     onBack: () -> Unit,
     onSelect: (MediaItem) -> Unit,
     onOpenEditor: () -> Unit,
@@ -443,33 +435,51 @@ private fun MomentDayContent(
     val waterMl = state.waterEntriesOn(dateKey).sumOf { it.ml }
     val sleep = state.sleepLog.find { it.dateKey == dateKey }
     val tasks = state.tasksOn(dateKey)
-    val ratio = item.aspectRatio.coerceIn(0.55f, 1.6f)
+    val photoHeightPx = heroBounds.height
     val photoH = with(density) { photoHeightPx.toDp() }
     val scroll = rememberScrollState()
     val stripScroll = rememberScrollState()
     val elastic = rememberElasticOverscroll(maxVertical = 56.dp, maxHorizontal = 0.dp)
     val stripElastic = rememberElasticOverscroll(maxVertical = 0.dp, maxHorizontal = 48.dp)
+    // Rest of the screen (header, sheet) fades in over the flight. The photo
+    // itself never fades — it's a single element that MOVES from the tapped
+    // tile into the hero slot, so it stays fully opaque and visible the whole
+    // time. That's the fix for the "duplicate photo" glitch: previously a
+    // separate flying clone and a separate settled hero image handed off to
+    // each other mid-air; now there's only ever one photo composable.
+    val contentAlpha = progress.coerceIn(0f, 1f)
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
-        // ── Fixed photo under the sheet ──
-        // Photo scales down slightly as the sheet covers it.
+        // ── The one photo — same element for the whole open transition ──
+        // While src != null and progress < 1, its rect is lerped from the
+        // tapped grid tile to the hero slot. Once settled it scales down
+        // slightly as the sheet is scrolled up over it.
+        val src = sourceBounds
+        val photoRect = if (src != null && progress < 1f) {
+            Rect(
+                left = src.left + (heroBounds.left - src.left) * progress,
+                top = src.top + (heroBounds.top - src.top) * progress,
+                right = src.right + (heroBounds.right - src.right) * progress,
+                bottom = src.bottom + (heroBounds.bottom - src.bottom) * progress,
+            )
+        } else heroBounds
+        val photoRadiusDp = if (src != null) {
+            14.dp + (20.dp - 14.dp) * progress.coerceIn(0f, 1f)
+        } else 20.dp
         val photoScale = 1f - (scroll.value / photoHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f) * 0.12f
         Box(
             Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 98.dp, start = 16.dp, end = 16.dp)
-                .fillMaxWidth()
-                .height(photoH)
+                .offset { IntOffset(photoRect.left.roundToInt(), photoRect.top.roundToInt()) }
+                .size(with(density) { photoRect.width.toDp() }, with(density) { photoRect.height.toDp() })
                 .graphicsLayer {
-                    alpha = if (photoVisible) 1f else 0f
                     scaleX = photoScale
                     scaleY = photoScale
                 }
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(photoRadiusDp))
                 .background(Color(0xFF1A1A1E)),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(false).build(),
+                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(200).build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -488,6 +498,7 @@ private fun MomentDayContent(
             Column(
                 Modifier
                     .fillMaxSize()
+                    .graphicsLayer { alpha = contentAlpha }
                     .nestedScroll(elastic.connection)
                     .graphicsLayer { translationY = elastic.verticalOverscroll.floatValue }
                     .verticalScroll(scroll),
@@ -738,12 +749,13 @@ private fun MomentDayContent(
             Modifier
                 .fillMaxWidth()
                 .zIndex(30f)
+                .graphicsLayer { alpha = contentAlpha }
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 CircleHeaderBtn(onClick = onBack) {
-                    Text("‹", color = Color.White, fontSize = 22.sp)
+                    BackChevron(tint = Color.White, size = 20.dp)
                 }
                 Spacer(Modifier.weight(1f))
                 CircleHeaderBtn(onClick = {}) {
