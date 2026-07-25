@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 208
-        versionName = "r208-caption-clip"
+        versionCode = 209
+        versionName = "r209-moments-day"
         vectorDrawables { useSupportLibrary = true }
     }
 

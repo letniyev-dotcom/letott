@@ -1,3 +1,9 @@
+## r209-moments-day (versionCode 209)
+- Moments: day-grouped grid, note dot, FAB +
+- Moment day detail: hero, photo strip, editable note (persisted), day stats (weight/water/kcal/sleep), plan tasks, meals (today)
+- MediaItem.note + LetifyDataStore media notes map
+- AppState.setMediaNote / noteFor / tasksOn
+
 ## r207-home-ideal-spacing (versionCode 207)
 - Главная по HTML-идеалу: ring 152dp / stroke 14, caption 12, dots top 10 / bottom 22 (воздух до карточек), gap 12 Moments→Plan→metrics, tips + pill dots as r206.
 - versionCode 206→207.

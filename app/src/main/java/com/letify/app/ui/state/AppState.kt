@@ -103,6 +103,7 @@ data class MediaItem(
     val aspectRatio: Float = 3f / 4f,
     val durationLabel: String = "",
     val createdAt: Long = System.currentTimeMillis(),
+    val note: String = "",
 )
 
 data class WaterEntry(
@@ -446,6 +447,20 @@ class AppState(
     // available (MediaScreen / app start) to hydrate the list from disk.
     val mediaItems: SnapshotStateList<MediaItem> = mutableStateListOf()
 
+    private val mediaNotes: MutableMap<String, String> =
+        (dataStore?.loadMediaNotes() ?: emptyMap()).toMutableMap()
+
+    fun noteFor(mediaId: String): String = mediaNotes[mediaId].orEmpty()
+
+    fun setMediaNote(mediaId: String, note: String) {
+        val trimmed = note.trim()
+        if (trimmed.isEmpty()) mediaNotes.remove(mediaId) else mediaNotes[mediaId] = trimmed
+        dataStore?.saveMediaNotes(mediaNotes)
+        val idx = mediaItems.indexOfFirst { it.id == mediaId }
+        if (idx >= 0) mediaItems[idx] = mediaItems[idx].copy(note = mediaNotes[mediaId].orEmpty())
+    }
+
+
     fun reloadMedia(filesDir: java.io.File) {
         val dir = java.io.File(filesDir, "media")
         val loaded = if (dir.isDirectory) {
@@ -460,6 +475,7 @@ class AppState(
                         aspectRatio = 3f / 4f,
                         durationLabel = if (f.name.endsWith(".mp4")) "видео" else "",
                         createdAt = f.lastModified(),
+                        note = mediaNotes[f.name].orEmpty(),
                     )
                 }
                 .orEmpty()
@@ -482,6 +498,7 @@ class AppState(
             aspectRatio = aspectRatio,
             durationLabel = durationLabel,
             createdAt = f.lastModified(),
+            note = mediaNotes[f.name].orEmpty(),
         )
         // De-dupe if already present (e.g. reload raced with capture).
         mediaItems.removeAll { it.id == item.id }
@@ -641,6 +658,12 @@ class AppState(
     /** Tasks scheduled for today. */
     fun tasksToday(): List<TaskItem> {
         val dow = Dates.todayDow()
+        return tasks.filter { it.isScheduledOn(dow) }
+    }
+
+    /** Tasks scheduled for an arbitrary dateKey (yyyy-MM-dd). */
+    fun tasksOn(dateKey: String): List<TaskItem> {
+        val dow = runCatching { java.time.LocalDate.parse(dateKey).dayOfWeek.value }.getOrDefault(Dates.todayDow())
         return tasks.filter { it.isScheduledOn(dow) }
     }
 

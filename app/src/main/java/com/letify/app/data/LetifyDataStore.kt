@@ -325,10 +325,27 @@ class LetifyDataStore(context: Context) {
     private fun String.splitToStrings(): Set<String> =
         if (isBlank()) emptySet() else split(",").filter { it.isNotBlank() }.toSet()
 
+
+    // Media notes: id → text
+    fun loadMediaNotes(): Map<String, String> {
+        val raw = prefs.getString(KEY_MEDIA_NOTES, "") ?: return emptyMap()
+        if (raw.isBlank()) return emptyMap()
+        return raw.split('').mapNotNull { tok ->
+            val i = tok.indexOf('')
+            if (i <= 0) null else tok.substring(0, i) to tok.substring(i + 1)
+        }.toMap()
+    }
+
+    fun saveMediaNotes(notes: Map<String, String>) {
+        val raw = notes.entries.joinToString("") { (k, v) -> "$k$v" }
+        prefs.edit().putString(KEY_MEDIA_NOTES, raw).apply()
+    }
+
     private companion object {
         const val RECORD_SEP = ";"
         const val FIELD_SEP = "|"
         const val KEY_TASKS = "tasks_v1"
+        const val KEY_MEDIA_NOTES = "media_notes_v1"
         const val KEY_WEIGHT = "weight"
         const val KEY_WEIGHT_GOAL = "weight_goal"
         const val KEY_WEIGHT_START = "weight_start"
