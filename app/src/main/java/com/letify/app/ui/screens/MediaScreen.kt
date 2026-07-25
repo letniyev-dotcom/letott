@@ -201,7 +201,7 @@ private fun MomentsListScreen(
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 56.dp, bottom = 100.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalItemSpacing = 6.dp,
             ) {
