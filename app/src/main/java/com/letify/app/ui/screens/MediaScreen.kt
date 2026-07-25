@@ -10,6 +10,7 @@ import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -168,6 +169,9 @@ private fun MomentsListScreen(
     val groups = remember(items) { groupByDay(items) }
     val photoCount = items.count { !it.isVideo }
     val videoCount = items.count { it.isVideo }
+    // Real status-bar height, used as a content-padding offset (not a
+    // windowInsetsPadding on the grid itself) — see the grid below.
+    val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Box(Modifier.fillMaxSize()) {
         if (items.isEmpty()) {
@@ -198,10 +202,20 @@ private fun MomentsListScreen(
             }
         } else {
             ElasticOverscroll {
+            // No windowInsetsPadding(statusBars) here on purpose: that would
+            // wall this box off below the status bar, so the area behind it
+            // could never show a scrolled-up photo — just the flat screen
+            // background sitting there permanently, which is exactly the
+            // opaque black band being reported. Every other screen gets
+            // away with the inset padding because its background color IS
+            // the screen color, so the band is invisible there; a photo grid
+            // needs to actually scroll its content underneath the
+            // (transparent) status bar, so the grid fills the whole screen
+            // and only the starting content offset comes from contentPadding.
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = statusBarInset + 56.dp, bottom = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalItemSpacing = 6.dp,
             ) {
