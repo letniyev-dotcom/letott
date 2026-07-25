@@ -347,16 +347,27 @@ fun LetifyApp() {
                         // Measure the real glyph boxes so the flying label lands
                         // exactly where Home / Profile place it (no drift).
                         val measurer = rememberTextMeasurer()
-                        val homeStyle = TextStyle(
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        val profileStyle = TextStyle(
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        val homeLayout = measurer.measure(AnnotatedString(name), homeStyle)
-                        val profileLayout = measurer.measure(AnnotatedString(name), profileStyle)
+                        // Keyed on `name` only — NOT recomputed on every t/frame.
+                        // identity(t) is recomposed once per animation frame
+                        // (IdentityFlightHost reads progress.value directly so
+                        // it can stay isolated from the tab screens), so any
+                        // unmemoized work here used to run 60×/sec for the
+                        // whole 520ms flight. The glyph layout never changes
+                        // mid-flight — only the interpolated Rect it's placed
+                        // into does — so it's safe (and much cheaper) to
+                        // remember it.
+                        val homeLayout = remember(name) {
+                            measurer.measure(
+                                AnnotatedString(name),
+                                TextStyle(fontSize = 19.sp, fontWeight = FontWeight.Bold),
+                            )
+                        }
+                        val profileLayout = remember(name) {
+                            measurer.measure(
+                                AnnotatedString(name),
+                                TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                            )
+                        }
                         UserIdentity(
                             progress = t,
                             sourceAvatar = estimatedHomeAvatarRect(density, statusBarPx),

@@ -49,13 +49,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -79,9 +75,6 @@ import coil.request.ImageRequest
 import com.letify.app.ui.components.BackButton
 import com.letify.app.ui.components.BackChevron
 import com.letify.app.ui.components.rememberElasticOverscroll
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
 import com.letify.app.ui.components.ElasticOverscroll
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.CompositionLocalProvider
@@ -175,14 +168,12 @@ private fun MomentsListScreen(
     val groups = remember(items) { groupByDay(items) }
     val photoCount = items.count { !it.isVideo }
     val videoCount = items.count { it.isVideo }
-    val hazeState = remember { HazeState() }
 
     Box(Modifier.fillMaxSize()) {
         if (items.isEmpty()) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .haze(hazeState)
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(top = 56.dp),
                 contentAlignment = Alignment.Center,
@@ -209,7 +200,7 @@ private fun MomentsListScreen(
             ElasticOverscroll {
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars).haze(hazeState).fadeTopEdge(64.dp),
+                modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 56.dp, bottom = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalItemSpacing = 6.dp,
@@ -248,31 +239,27 @@ private fun MomentsListScreen(
             } // ElasticOverscroll
         } // else
 
-        // Back button — its own small blurred, rounded island. No full-width scrim.
+        // Back button — fully transparent, no backing shape, no blur. Floats
+        // directly over the grid; nothing is clipped or tinted underneath it.
         Box(
             Modifier
                 .align(Alignment.TopStart)
                 .zIndex(2f)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 12.dp, top = 6.dp)
-                .size(44.dp)
-                .hazeChild(state = hazeState, shape = CircleShape)
-                .background(Letify.colors.bg.copy(alpha = 0.45f), CircleShape),
+                .size(44.dp),
             contentAlignment = Alignment.Center,
         ) {
             BackButton(onClick = onBack, tint = Letify.colors.text, glyphSize = 22.dp, tapSize = 44.dp)
         }
 
-        // Title — its own blurred, rounded island, floating above the grid.
+        // Title — fully transparent, floats directly above the grid.
         Box(
             Modifier
                 .align(Alignment.TopCenter)
                 .zIndex(2f)
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 6.dp)
-                .hazeChild(state = hazeState, shape = RoundedCornerShape(20.dp))
-                .background(Letify.colors.bg.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 22.dp, vertical = 11.dp),
+                .padding(top = 17.dp),
         ) {
             Text(
                 "Моменты",
@@ -317,7 +304,11 @@ private fun MomentTile(item: MediaItem, hidden: Boolean, onClick: (Rect) -> Unit
                 .graphicsLayer { alpha = if (hidden) 0f else 1f },
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(120).build(),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(mediaDisplayUri(item))
+                    .memoryCacheKey(item.id)
+                    .crossfade(120)
+                    .build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -482,7 +473,18 @@ private fun MomentDayContent(
                 .background(Color(0xFF1A1A1E)),
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(mediaDisplayUri(item)).crossfade(false).build(),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(mediaDisplayUri(item))
+                    // Same key the grid tile stored its bitmap under — shows
+                    // instantly (already decoded, already on screen a moment
+                    // ago) instead of the flat placeholder box while any
+                    // higher-res decode for this size happens in the
+                    // background. This is what was reading as a "gray patch"
+                    // at both the takeoff and landing spots, and again on
+                    // every photo switch in the day strip.
+                    .placeholderMemoryCacheKey(item.id)
+                    .crossfade(120)
+                    .build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
@@ -572,7 +574,12 @@ private fun MomentDayContent(
                                             .background(Color(0xFF1C1C22)),
                                     ) {
                                         AsyncImage(
-                                            model = mediaDisplayUri(m),
+                                            model = ImageRequest.Builder(LocalContext.current)
+                                                .data(mediaDisplayUri(m))
+                                                .memoryCacheKey(m.id)
+                                                .placeholderMemoryCacheKey(m.id)
+                                                .crossfade(120)
+                                                .build(),
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop,
@@ -864,22 +871,6 @@ private fun NoteEditorScreen(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-// Smoothly fades scrolled content out near the top edge instead of letting
-// the list clip it with a hard line right at the status bar. This is a mask
-// on the content's own alpha (BlendMode.DstIn), not a drawn scrim on top —
-// it doesn't paint over anything, it just lets the text/photos taper off.
-private fun Modifier.fadeTopEdge(height: Dp): Modifier = this
-    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent {
-        drawContent()
-        val h = height.toPx()
-        drawRect(
-            brush = Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black), startY = 0f, endY = h),
-            size = Size(size.width, h),
-            blendMode = BlendMode.DstIn,
-        )
-    }
 
 // A layout-phase-only interpolation from `sourceBounds` to `heroBounds`,
 // driven by `progress`. Deliberately implemented with Modifier.layout
