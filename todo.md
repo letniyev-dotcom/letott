@@ -1,3 +1,7 @@
+## r207-home-ideal-spacing (versionCode 207)
+- Главная по HTML-идеалу: ring 152dp / stroke 14, caption 12, dots top 10 / bottom 22 (воздух до карточек), gap 12 Moments→Plan→metrics, tips + pill dots as r206.
+- versionCode 206→207.
+
 ## r206-home-redesign (versionCode 206)
 - Главная по HTML-концепту: кольцо 158dp / stroke 14dp, tips «ИИ · сегодня» + футер, animated pill-dots (6→18, 320ms), единый gap 12dp Moments→Plan→metrics, off-dot = track (читается в light).
 - versionCode 205→206.

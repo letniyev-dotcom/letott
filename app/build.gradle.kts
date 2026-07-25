@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 206
-        versionName = "r206-home-redesign"
+        versionCode = 207
+        versionName = "r207-home-ideal-spacing"
         vectorDrawables { useSupportLibrary = true }
     }
 

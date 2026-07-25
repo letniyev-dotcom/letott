@@ -196,14 +196,14 @@ fun HomeScreen(
             }
         }
 
-        // Progress carousel — slightly shorter box, thicker ring, more air below.
-        Box(Modifier.fillMaxWidth().height(198.dp).padding(top = 4.dp)) {
+        // Progress carousel — concept ideal: 152 ring, air under dots before cards.
+        Box(Modifier.fillMaxWidth().height(186.dp).padding(top = 10.dp)) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (page == 0) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            DayRing(overall, 158.dp)
-                            Spacer(Modifier.height(14.dp))
+                            DayRing(overall, 152.dp)
+                            Spacer(Modifier.height(12.dp))
                             Text(
                                 "прогресс за день",
                                 color = Letify.colors.muted,
@@ -245,10 +245,11 @@ fun HomeScreen(
         }
 
         // Animated page dots — active stretches into a pill (concept).
+        // 10 under caption zone, 22 before first card — cards no longer glued to ring.
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 12.dp),
+                .padding(top = 10.dp, bottom = 22.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -559,7 +560,7 @@ private fun DayRing(progress: Float, size: Dp) {
             "${(p * 100).toInt()}%",
             color = Letify.colors.text,
             style = Letify.typography.displayLarge,
-            fontSize = 36.sp,
+            fontSize = 34.sp,
             fontWeight = FontWeight.SemiBold,
         )
     }
