@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 207
-        versionName = "r207-home-ideal-spacing"
+        versionCode = 208
+        versionName = "r208-caption-clip"
         vectorDrawables { useSupportLibrary = true }
     }
 
