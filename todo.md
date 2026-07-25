@@ -1,3 +1,10 @@
+## r210-moments-full (versionCode 210)
+- Moments concept in app: day-grouped grid, note dot, FAB
+- Day detail: fixed circle back/more, rounded photo, sheet 22dp, centered strip, day stats/plan/meals
+- Fly open animation (tile → photo slot + screen slide), reverse on back
+- Fullscreen note editor with transparent top (Отмена / Готово)
+- MediaItem.note + DataStore notes from r209
+
 ## r209-moments-day (versionCode 209)
 - Moments: day-grouped grid, note dot, FAB +
 - Moment day detail: hero, photo strip, editable note (persisted), day stats (weight/water/kcal/sleep), plan tasks, meals (today)

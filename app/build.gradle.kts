@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 209
-        versionName = "r209-moments-day"
+        versionCode = 210
+        versionName = "r210-moments-full"
         vectorDrawables { useSupportLibrary = true }
     }
 
