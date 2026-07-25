@@ -89,8 +89,6 @@ import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.state.MediaItem
 import com.letify.app.ui.theme.Letify
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.launch
@@ -352,17 +350,15 @@ private fun MomentsListScreen(
 // content below) instead of a flat tint, plus a bright top-to-bottom rim
 // highlight — the cue that reads as convex glass catching light rather than
 // plain frosted plastic. `shape` drives both the blur's clip and the rim.
+// Deliberately built on just the `hazeChild(state, shape)` overload — the
+// one signature that's been stable across every Haze release since 0.4.0 —
+// with the tint and shine layered on top as plain modifiers, rather than
+// HazeStyle/HazeTint, whose constructor shape has changed release to
+// release and doesn't match the pinned 0.7.3 build here.
 private fun Modifier.liquidGlass(hazeState: HazeState, shape: Shape): Modifier = this
     .clip(shape)
-    .hazeChild(
-        state = hazeState,
-        shape = shape,
-        style = HazeStyle(
-            tints = listOf(HazeTint(Color.Black.copy(alpha = 0.30f))),
-            blurRadius = 22.dp,
-            noiseFactor = 0.06f,
-        ),
-    )
+    .hazeChild(state = hazeState, shape = shape)
+    .background(Color.Black.copy(alpha = 0.30f), shape)
     .border(
         width = 1.dp,
         brush = Brush.verticalGradient(
