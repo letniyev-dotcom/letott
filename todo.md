@@ -241,6 +241,25 @@
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
 
+## r226-profile-flight-stutter (versionCode 226)
+- **Полёт Home↔Profile всё ещё дёргался после фикса мигания аватарки:** причина №2 —
+  4 карточки метрик на Home держат Lottie-стикеры (сэндвич/кола/кот/гиря) с
+  `iterations = IterateForever` и БЕЗ `isPlaying` — то есть они непрерывно
+  анимируются и инвалидируют себя каждый кадр ВСЕГДА, включая все 520мс, пока
+  идёт полёт авы/имени. Это шло вперемешку с кадрами самого полёта и отжирало
+  бюджет кадра — отсюда рывки даже после того как мигание аватарки убрали.
+- Заодно оказалось, что `tabSettled` (флаг «идёт ли сейчас переключение
+  таба») уже был заведён в `LetifyApp.kt` (изначально для блюра навбара), но
+  никуда не был подключён — переменная объявлялась и обновлялась, но её
+  никто не читал.
+- ФИКС: `tabSettled` теперь прокинут в `HomeScreen` как `animationsActive`
+  → `MetricCard` → `LottieAnimation.isPlaying`. Стикеры замирают на текущем
+  кадре на время ЛЮБОГО переключения таба (включая полёт Home↔Profile) и
+  доигрывают дальше сразу как только анимация встаёт на место — глазом
+  эта заморозка на полсекунды не читается, а вот кадры полёта больше ни с
+  чем не делят бюджет.
+- versionCode 225→226.
+
 ## r225-profile-flight-avatar-flicker (versionCode 225)
 - **Полёт авы Home↔Profile лагал/дёргался/мигал:** `UserIdentity` — единственный композабл,
   рисующий аву+имя во время полёта — перекомпонуется на КАЖДЫЙ кадр анимации (t меняется

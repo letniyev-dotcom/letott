@@ -90,6 +90,21 @@ fun HomeScreen(
     hideAvatarName: Boolean = false,
     onAvatarBoundsChanged: (Rect) -> Unit = {},
     onNameBoundsChanged: (Rect) -> Unit = {},
+    // The 4 metric-card stickers (sandwich/coke/cat/weight-hand) are
+    // IterateForever Lottie animations — by default they keep evaluating and
+    // invalidating their own layer every frame FOREVER, including while a
+    // tab-switch or the Home⇄Profile hero flight is actively animating on
+    // top of/away from this screen. That constant background invalidation
+    // was competing for frame budget with the hero flight's own
+    // graphicsLayer transform every frame, which is what read as
+    // "дёргается" (stutter) during the flight even after the avatar-image
+    // flicker was fixed. Default true (keep the old always-on look at
+    // rest); the caller passes false only while a transition touching this
+    // screen is in flight, so the stickers freeze on their current frame
+    // for that ~500ms and resume the instant motion settles — imperceptible
+    // as a freeze, but frees up every frame of the flight for the animation
+    // that actually needs to be smooth.
+    animationsActive: Boolean = true,
 ) {
     val state = LocalAppState.current
     val context = LocalContext.current
@@ -393,6 +408,7 @@ fun HomeScreen(
                         label = "${state.kcal} из ${state.kcalTarget} ккал",
                         color = LetifyColors.Cal,
                         onAdd = onOpenNutrition,
+                        animationsActive = animationsActive,
                     )
                     MetricCard(
                         modifier = Modifier.width(cardW),
@@ -402,6 +418,7 @@ fun HomeScreen(
                         label = formatWater(state.waterMl, state.waterTarget),
                         color = LetifyColors.Water,
                         onAdd = { state.addWater(250, "Вода", "water") },
+                        animationsActive = animationsActive,
                     )
                     MetricCard(
                         modifier = Modifier.width(cardW),
@@ -411,6 +428,7 @@ fun HomeScreen(
                         label = sleepLabel,
                         color = LetifyColors.Purple,
                         onAdd = onAddSleep,
+                        animationsActive = animationsActive,
                     )
                     MetricCard(
                         modifier = Modifier.width(cardW),
@@ -420,6 +438,7 @@ fun HomeScreen(
                         label = weightLabel,
                         color = LetifyColors.Orange,
                         onAdd = onAddWeight,
+                        animationsActive = animationsActive,
                     )
                 }
             }
@@ -576,6 +595,7 @@ private fun MetricCard(
     label: String,
     color: Color,
     onAdd: () -> Unit,
+    animationsActive: Boolean = true,
 ) {
     Column(
         modifier
@@ -587,6 +607,7 @@ private fun MetricCard(
             LottieAnimation(
                 composition = composition,
                 iterations = LottieConstants.IterateForever,
+                isPlaying = animationsActive,
                 modifier = Modifier.size(36.dp),
             )
             Spacer(Modifier.width(9.dp))

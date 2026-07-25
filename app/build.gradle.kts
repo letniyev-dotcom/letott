@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 225
-        versionName = "r225-profile-flight-avatar-flicker"
+        versionCode = 226
+        versionName = "r226-profile-flight-stutter"
         vectorDrawables { useSupportLibrary = true }
     }
 

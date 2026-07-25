@@ -402,6 +402,13 @@ fun LetifyApp() {
                                 onOpenMoments = { push(AddOverlay.Media) },
                                 // Placeholder only — the one real identity is at the root.
                                 hideAvatarName = usePlaceholder,
+                                // Freeze the 4 IterateForever Lottie stickers while ANY
+                                // tab transition is in flight (this was tracked via
+                                // `tabSettled` already for the navbar blur but never
+                                // reached Home) — they were invalidating every frame
+                                // the whole time, fighting the hero flight for frame
+                                // budget and reading as stutter during Home⇄Profile.
+                                animationsActive = tabSettled,
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
