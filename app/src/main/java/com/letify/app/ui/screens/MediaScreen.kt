@@ -248,7 +248,7 @@ private fun MomentsListScreen(
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 12.dp, top = 6.dp)
                 .size(44.dp)
-                .hazeChild(state = hazeState) { shape = CircleShape }
+                .hazeChild(state = hazeState, shape = CircleShape)
                 .background(Letify.colors.bg.copy(alpha = 0.45f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
@@ -262,7 +262,7 @@ private fun MomentsListScreen(
                 .zIndex(2f)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(top = 6.dp)
-                .hazeChild(state = hazeState) { shape = RoundedCornerShape(20.dp) }
+                .hazeChild(state = hazeState, shape = RoundedCornerShape(20.dp))
                 .background(Letify.colors.bg.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
                 .padding(horizontal = 22.dp, vertical = 11.dp),
         ) {
