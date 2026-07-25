@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 217
-        versionName = "r217-morph-video"
+        versionCode = 223
+        versionName = "r223-moments-fly-fix"
         vectorDrawables { useSupportLibrary = true }
     }
 

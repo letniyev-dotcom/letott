@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -103,17 +104,32 @@ fun MediaScreen(
 ) {
     val state = LocalAppState.current
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val config = LocalConfiguration.current
     LaunchedEffect(Unit) { state.reloadMedia(context.filesDir) }
 
     var selectedId by remember { mutableStateOf<String?>(null) }
     var sourceBounds by remember { mutableStateOf<Rect?>(null) }
     var hideTileId by remember { mutableStateOf<String?>(null) }
     var showEditor by remember { mutableStateOf(false) }
+    // Live bounds of every grid tile — close-after-switch flies back to the
+    // *currently selected* photo's cell, not the original tap target.
+    val tileBounds = remember { mutableStateMapOf<String, Rect>() }
 
     val selected = selectedId?.let { id -> state.mediaItems.find { it.id == id } }
     val dayItems = selected?.let { s ->
         state.mediaItems.filter { dateKeyOf(it.createdAt) == dateKeyOf(s.createdAt) }
     }.orEmpty()
+
+    val screenW = with(density) { config.screenWidthDp.dp.toPx() }
+    val screenH = with(density) { config.screenHeightDp.dp.toPx() }
+    val statusBarPx = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val headerBottomPx = with(density) { (statusBarPx + 56.dp).toPx() }
+
+    fun resolveSourceBounds(raw: Rect?): Rect? {
+        if (raw == null || raw == Rect.Zero) return null
+        return flightSourceBounds(raw, screenW, screenH, headerBottomPx)
+    }
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         MomentsListScreen(
@@ -121,9 +137,14 @@ fun MediaScreen(
             hideTileId = hideTileId,
             onBack = onBack,
             onOpenCamera = onOpenCamera,
+            onTileBounds = { id, rect -> tileBounds[id] = rect },
             onOpenItem = { item, bounds ->
-                sourceBounds = bounds
-                hideTileId = item.id
+                val src = resolveSourceBounds(bounds)
+                sourceBounds = src
+                // Only hide the grid cell when we actually fly from it —
+                // a fade-open (src == null) must leave the cell visible so
+                // there is no empty hole under a partially scrolled tile.
+                hideTileId = if (src != null) item.id else null
                 selectedId = item.id
             },
         )
@@ -133,7 +154,14 @@ fun MediaScreen(
                 item = selected,
                 dayItems = dayItems,
                 sourceBounds = sourceBounds,
-                onSelect = { selectedId = it.id },
+                onSelect = { next ->
+                    selectedId = next.id
+                    val src = resolveSourceBounds(tileBounds[next.id])
+                    sourceBounds = src
+                    // Hide the newly selected grid cell only when we can fly
+                    // back to it; otherwise leave every cell visible.
+                    hideTileId = if (src != null) next.id else null
+                },
                 onClosed = {
                     selectedId = null
                     hideTileId = null
@@ -164,6 +192,7 @@ private fun MomentsListScreen(
     hideTileId: String?,
     onBack: () -> Unit,
     onOpenCamera: () -> Unit,
+    onTileBounds: (String, Rect) -> Unit,
     onOpenItem: (MediaItem, Rect) -> Unit,
 ) {
     val groups = remember(items) { groupByDay(items) }
@@ -245,6 +274,7 @@ private fun MomentsListScreen(
                         MomentTile(
                             item = item,
                             hidden = item.id == hideTileId,
+                            onBounds = { rect -> onTileBounds(item.id, rect) },
                             onClick = { bounds -> onOpenItem(item, bounds) },
                         )
                     }
@@ -301,59 +331,80 @@ private fun MomentsListScreen(
 }
 
 @Composable
-private fun MomentTile(item: MediaItem, hidden: Boolean, onClick: (Rect) -> Unit) {
+private fun MomentTile(
+    item: MediaItem,
+    hidden: Boolean,
+    onBounds: (Rect) -> Unit,
+    onClick: (Rect) -> Unit,
+) {
     val ratio = item.aspectRatio.coerceIn(0.55f, 1.4f)
     var bounds by remember { mutableStateOf(Rect.Zero) }
+    val shape = RoundedCornerShape(14.dp)
     NoFeedbackButton(
         onClick = { if (bounds != Rect.Zero) onClick(bounds) },
         modifier = Modifier.fillMaxWidth(),
     ) {
+        // When hidden (shared-element flight in progress) the tile must be
+        // fully invisible — no near-black placeholder disc that used to flash
+        // under the flying photo and peek as a 1px edge while scrolling.
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(ratio)
-                .onGloballyPositioned { bounds = it.boundsInRoot() }
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF1C1C22))
-                .graphicsLayer { alpha = if (hidden) 0f else 1f },
-        ) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(mediaDisplayUri(item))
-                    .memoryCacheKey(item.id)
-                    .crossfade(120)
-                    .build(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            if (item.isVideo) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
-                    Text("▶", color = Color.White, fontSize = 22.sp)
+                .onGloballyPositioned {
+                    val r = it.boundsInRoot()
+                    bounds = r
+                    onBounds(r)
                 }
-            }
-            if (item.note.isNotBlank()) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
+                .graphicsLayer {
+                    alpha = if (hidden) 0f else 1f
+                    clip = true
+                    this.shape = shape
+                }
+                .background(Letify.colors.container, shape),
+        ) {
+            if (!hidden) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(mediaDisplayUri(item))
+                        .memoryCacheKey(item.id)
+                        .crossfade(false)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                if (item.isVideo) {
+                    Box(
+                        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("▶", color = Color.White, fontSize = 22.sp)
+                    }
+                }
+                if (item.note.isNotBlank()) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .size(7.dp)
+                            .background(Letify.colors.accent, CircleShape),
+                    )
+                }
+                val time = formatTime(item.createdAt)
+                Text(
+                    if (item.isVideo && item.durationLabel.isNotBlank()) item.durationLabel else time,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
                         .padding(8.dp)
-                        .size(7.dp)
-                        .background(Letify.colors.accent, CircleShape),
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
                 )
             }
-            val time = formatTime(item.createdAt)
-            Text(
-                if (item.isVideo && item.durationLabel.isNotBlank()) item.durationLabel else time,
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .padding(horizontal = 7.dp, vertical = 3.dp),
-            )
         }
     }
 }
@@ -478,26 +529,28 @@ private fun MomentDayContent(
                 .graphicsLayer {
                     val p = progress.value.coerceIn(0f, 1f)
                     val hasSrc = sourceBounds != null
+                    // With a real source the photo stays fully opaque while it
+                    // morphs; without one (partially off-screen tap) it fades
+                    // in/out with the sheet so close doesn't hard-cut.
+                    alpha = if (hasSrc) 1f else p
                     val scale = 1f - (scroll.value / photoHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f) * 0.12f
                     scaleX = scale
                     scaleY = scale
                     shape = RoundedCornerShape(if (hasSrc) 14.dp + (20.dp - 14.dp) * p else 20.dp)
                     clip = true
                 }
-                .background(Color(0xFF1A1A1E)),
+                .background(Letify.colors.container),
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(mediaDisplayUri(item))
                     // Same key the grid tile stored its bitmap under — shows
                     // instantly (already decoded, already on screen a moment
-                    // ago) instead of the flat placeholder box while any
-                    // higher-res decode for this size happens in the
-                    // background. This is what was reading as a "gray patch"
-                    // at both the takeoff and landing spots, and again on
-                    // every photo switch in the day strip.
+                    // ago). No crossfade: a fade would briefly reveal the
+                    // container fill as a dark/black patch under the photo.
                     .placeholderMemoryCacheKey(item.id)
-                    .crossfade(120)
+                    .memoryCacheKey(item.id)
+                    .crossfade(false)
                     .build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
@@ -585,7 +638,7 @@ private fun MomentDayContent(
                                                 ) else Modifier,
                                             )
                                             .clip(RoundedCornerShape(14.dp))
-                                            .background(Color(0xFF1C1C22)),
+                                            .background(Letify.colors.container),
                                     ) {
                                         AsyncImage(
                                             model = ImageRequest.Builder(LocalContext.current)
@@ -885,6 +938,39 @@ private fun NoteEditorScreen(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+
+// Resolve a tapped tile's bounds into a flight source that:
+//  • never starts above the list header (avoids the photo covering «Моменты»)
+//  • never starts off-screen (avoids the squashed open/close when tapping a
+//    partially scrolled-away tile)
+//  • returns null when the tile is mostly invisible → fade instead of fly
+private fun flightSourceBounds(
+    raw: Rect,
+    screenW: Float,
+    screenH: Float,
+    headerBottom: Float,
+): Rect? {
+    if (raw.width < 8f || raw.height < 8f) return null
+    // Visible slice of the tile inside the area below the header.
+    val visTop = maxOf(raw.top, headerBottom)
+    val visBottom = minOf(raw.bottom, screenH)
+    val visLeft = maxOf(raw.left, 0f)
+    val visRight = minOf(raw.right, screenW)
+    val visH = visBottom - visTop
+    val visW = visRight - visLeft
+    if (visH < raw.height * 0.45f || visW < raw.width * 0.45f) {
+        // Mostly off-screen / under the header — fade, don't fly.
+        return null
+    }
+    // Keep the full tile size (no aspect squash) but pin the start position
+    // fully on-screen below the header so the morph never begins half-clipped.
+    val w = raw.width
+    val h = raw.height
+    val left = raw.left.coerceIn(0f, (screenW - w).coerceAtLeast(0f))
+    val top = raw.top.coerceIn(headerBottom, (screenH - h).coerceAtLeast(headerBottom))
+    return Rect(left, top, left + w, top + h)
+}
 
 // A layout-phase-only interpolation from `sourceBounds` to `heroBounds`,
 // driven by `progress`. Deliberately implemented with Modifier.layout

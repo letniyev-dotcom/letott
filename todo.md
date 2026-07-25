@@ -240,3 +240,9 @@
 ## r84-overlap — DONE (2026-06-01)
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
+
+## r223-moments-fly-fix (versionCode 223)
+- **Чёрные пятна под фото:** убраны hardcoded `Color(0xFF1C1C22)` / `0xFF1A1A1E` с тайлов, hero и стрипа → `Letify.colors.container`. При hidden тайл полностью alpha=0 и без content (не рисует подложку). crossfade выключен на grid/hero — больше нет вспышки тёмного placeholder.
+- **Закрытие после смены фото в стрипе летело не туда:** `tileBounds` map обновляется с каждого MomentTile; onSelect переназначает `sourceBounds` + `hideTileId` на выбранный кадр. Close летит в клетку текущего фото, а не исходного тапа.
+- **Приплющивание при тапе по частично уехавшему тайлу:** `flightSourceBounds()` — если видно <45% клетки → fade (src=null), иначе старт с полным размером, позиция прижата ниже хедера / в экран. Больше нет морфа из half-clipped rect.
+- **Фото наезжало на «Моменты»:** source top clamp ≥ headerBottom (statusBar+56dp), так что fly не стартует из-под заголовка.
