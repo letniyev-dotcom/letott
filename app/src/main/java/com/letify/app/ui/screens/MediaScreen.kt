@@ -193,7 +193,7 @@ private fun MomentsListScreen(
                 }
             }
         } else {
-            ElasticOverscroll(Modifier = Modifier.fillMaxSize()) {
+            ElasticOverscroll {
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
