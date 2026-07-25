@@ -476,26 +476,44 @@ private fun MomentDayContent(
                     Text(formatTime(item.createdAt), color = Letify.colors.muted, style = Letify.typography.bodyMedium, modifier = Modifier.padding(top = 3.dp, bottom = 14.dp))
 
                     if (dayItems.size > 1) {
+                        // Edge-to-edge horizontal strip: break out of 20.dp parent padding
+                        // so thumbs scroll to the screen edges instead of clipping.
                         Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 12.dp),
-                            horizontalArrangement = Arrangement.Center,
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = (-20).dp)
+                                .horizontalScroll(rememberScrollState())
+                                .padding(bottom = 12.dp),
                         ) {
+                            Spacer(Modifier.width(20.dp))
                             dayItems.forEach { m ->
                                 val on = m.id == item.id
                                 NoFeedbackButton(onClick = { onSelect(m) }) {
                                     Box(
                                         Modifier
-                                            .padding(horizontal = 4.dp)
+                                            .padding(end = 8.dp)
                                             .width(64.dp)
                                             .height(84.dp)
-                                            .then(if (on) Modifier.border(2.5.dp, Letify.colors.accent, RoundedCornerShape(14.dp)) else Modifier)
+                                            .then(
+                                                if (on) Modifier.border(
+                                                    2.5.dp,
+                                                    Letify.colors.accent,
+                                                    RoundedCornerShape(14.dp),
+                                                ) else Modifier,
+                                            )
                                             .clip(RoundedCornerShape(14.dp))
                                             .background(Color(0xFF1C1C22)),
                                     ) {
-                                        AsyncImage(model = m.uri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                        AsyncImage(
+                                            model = m.uri,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                        )
                                     }
                                 }
                             }
+                            Spacer(Modifier.width(12.dp))
                         }
                     }
 
