@@ -471,9 +471,21 @@ private fun MomentDayContent(
                 Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(99.dp)).background(Letify.colors.track))
                 }
-                Column(Modifier.padding(horizontal = 20.dp)) {
-                    Text(formatDayTitle(dateKey), color = Letify.colors.text, style = Letify.typography.titleLarge, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                    Text(formatTime(item.createdAt), color = Letify.colors.muted, style = Letify.typography.bodyMedium, modifier = Modifier.padding(top = 3.dp, bottom = 14.dp))
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        formatDayTitle(dateKey),
+                        color = Letify.colors.text,
+                        style = Letify.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                    Text(
+                        formatTime(item.createdAt),
+                        color = Letify.colors.muted,
+                        style = Letify.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 3.dp, bottom = 14.dp),
+                    )
 
                     if (dayItems.size > 1) {
                         // Edge-to-edge horizontal strip: break out of 20.dp parent padding
@@ -481,7 +493,6 @@ private fun MomentDayContent(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = (-20).dp)
                                 .horizontalScroll(rememberScrollState())
                                 .padding(bottom = 12.dp),
                         ) {
@@ -517,7 +528,7 @@ private fun MomentDayContent(
                         }
                     }
 
-                    NoFeedbackButton(onClick = onOpenEditor, modifier = Modifier.fillMaxWidth()) {
+                    NoFeedbackButton(onClick = onOpenEditor, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                         Column(
                             Modifier
                                 .fillMaxWidth()
@@ -541,9 +552,18 @@ private fun MomentDayContent(
                     }
 
                     Spacer(Modifier.height(18.dp))
-                    Text("Этот день", color = Letify.colors.muted, style = Letify.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Этот день",
+                        color = Letify.colors.muted,
+                        style = Letify.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
                     Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         DayStat(Modifier.weight(1f), weight?.let { String.format(Locale.US, "%.1f", it) } ?: "—", "кг")
                         DayStat(
                             Modifier.weight(1f),
@@ -559,9 +579,22 @@ private fun MomentDayContent(
 
                     if (tasks.isNotEmpty()) {
                         Spacer(Modifier.height(18.dp))
-                        Text("План", color = Letify.colors.muted, style = Letify.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "План",
+                            color = Letify.colors.muted,
+                            style = Letify.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                        )
                         Spacer(Modifier.height(8.dp))
-                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Letify.colors.bg).padding(horizontal = 14.dp)) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Letify.colors.bg)
+                                .padding(horizontal = 14.dp),
+                        ) {
                             tasks.forEachIndexed { i, task ->
                                 val done = task.isCompletedOn(dateKey)
                                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -579,9 +612,22 @@ private fun MomentDayContent(
 
                     if (isToday) {
                         Spacer(Modifier.height(18.dp))
-                        Text("Питание", color = Letify.colors.muted, style = Letify.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Питание",
+                            color = Letify.colors.muted,
+                            style = Letify.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                        )
                         Spacer(Modifier.height(8.dp))
-                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Letify.colors.bg).padding(horizontal = 14.dp)) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Letify.colors.bg)
+                                .padding(horizontal = 14.dp),
+                        ) {
                             state.meals.forEachIndexed { i, meal ->
                                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Letify.colors.container), contentAlignment = Alignment.Center) {

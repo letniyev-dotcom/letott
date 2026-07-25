@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 211
-        versionName = "r211-strip-edges"
+        versionCode = 212
+        versionName = "r212-strip-fix"
         vectorDrawables { useSupportLibrary = true }
     }
 
