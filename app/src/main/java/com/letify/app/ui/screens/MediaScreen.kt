@@ -1,5 +1,7 @@
 package com.letify.app.ui.screens
 
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -66,6 +68,11 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.letify.app.ui.components.BackButton
+import com.letify.app.ui.components.rememberElasticOverscroll
+import com.letify.app.ui.components.ElasticOverscroll
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.ExperimentalFoundationApi
 import com.letify.app.ui.components.NoFeedbackButton
 import com.letify.app.ui.icons.SolarIcon
 import com.letify.app.ui.state.Dates
@@ -185,6 +192,7 @@ private fun MomentsListScreen(
                 }
             }
         } else {
+            ElasticOverscroll(Modifier = Modifier.fillMaxSize()) {
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars),
@@ -223,7 +231,8 @@ private fun MomentsListScreen(
                     }
                 }
             }
-        }
+            } // ElasticOverscroll
+        } // else
 
         Box(
             Modifier
@@ -332,8 +341,19 @@ private fun MomentDayHost(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val progress = remember { Animatable(0f) }
-    var targetBounds by remember { mutableStateOf<Rect?>(null) }
     var closing by remember { mutableStateOf(false) }
+    val config = LocalConfiguration.current
+
+    // Fixed destination geometry — never remeasure mid-flight (was causing jumps).
+    val dst = with(density) {
+        val maxH = (config.screenHeightDp * 0.52f).dp.toPx()
+        val w = (config.screenWidthDp.dp - 32.dp).toPx()
+        val ratio = item.aspectRatio.coerceIn(0.55f, 1.6f)
+        val h = (w / ratio).coerceAtMost(maxH)
+        val left = 16.dp.toPx()
+        val top = 98.dp.toPx()
+        Rect(left, top, left + w, top + h)
+    }
 
     LaunchedEffect(item.id) {
         progress.snapTo(0f)
@@ -351,41 +371,35 @@ private fun MomentDayHost(
 
     val p = progress.value
     val src = sourceBounds
-    val dst = targetBounds
+    val flying = src != null && p < 0.995f
 
     Box(Modifier.fillMaxSize().zIndex(10f)) {
-        // Detail screen slides up
+        // Detail slides up from bottom
         Box(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     translationY = (1f - p) * size.height
-                    alpha = 0.3f + 0.7f * p
-                }
-                .background(Color(0xFF0E0E10)),
+                },
         ) {
             MomentDayContent(
                 item = item,
                 dayItems = dayItems,
-                photoAlpha = when {
-                    src == null || dst == null -> p
-                    p >= 0.99f -> 1f
-                    else -> 0f
-                },
-                onPhotoPositioned = { targetBounds = it },
+                photoVisible = !flying,
+                photoHeightPx = dst.height,
                 onBack = { close() },
                 onSelect = onSelect,
                 onOpenEditor = onOpenEditor,
             )
         }
 
-        // Flying photo
-        if (src != null && dst != null && p < 0.999f) {
+        // Flying clone — only while in flight
+        if (flying && src != null) {
             val l = src.left + (dst.left - src.left) * p
             val t = src.top + (dst.top - src.top) * p
             val w = src.width + (dst.width - src.width) * p
             val h = src.height + (dst.height - src.height) * p
-            val radius = with(density) { (14.dp.toPx() + (20.dp.toPx() - 14.dp.toPx()) * p) }
+            val radius = with(density) { 14.dp.toPx() + (20.dp.toPx() - 14.dp.toPx()) * p }
             Box(
                 Modifier
                     .offset { IntOffset(l.roundToInt(), t.roundToInt()) }
@@ -408,13 +422,14 @@ private fun MomentDayHost(
 private fun MomentDayContent(
     item: MediaItem,
     dayItems: List<MediaItem>,
-    photoAlpha: Float,
-    onPhotoPositioned: (Rect) -> Unit,
+    photoVisible: Boolean,
+    photoHeightPx: Float,
     onBack: () -> Unit,
     onSelect: (MediaItem) -> Unit,
     onOpenEditor: () -> Unit,
 ) {
     val state = LocalAppState.current
+    val density = LocalDensity.current
     val dateKey = dateKeyOf(item.createdAt)
     val today = Dates.todayKey()
     val isToday = dateKey == today
@@ -422,56 +437,70 @@ private fun MomentDayContent(
     val waterMl = state.waterEntriesOn(dateKey).sumOf { it.ml }
     val sleep = state.sleepLog.find { it.dateKey == dateKey }
     val tasks = state.tasksOn(dateKey)
-    val config = LocalConfiguration.current
-    val maxPhotoH = (config.screenHeightDp * 0.52f).dp
     val ratio = item.aspectRatio.coerceIn(0.55f, 1.6f)
+    val photoH = with(density) { photoHeightPx.toDp() }
+    val scroll = rememberScrollState()
+    val stripScroll = rememberScrollState()
+    val elastic = rememberElasticOverscroll(maxVertical = 56.dp, maxHorizontal = 0.dp)
+    val stripElastic = rememberElasticOverscroll(maxVertical = 0.dp, maxHorizontal = 48.dp)
 
-    // Fixed header
-    Box(Modifier.fillMaxSize()) {
-        // Scroll with spacer + sheet
-        val scroll = rememberScrollState()
-        Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
-            // Spacer for header + photo area
-            Spacer(Modifier.height(98.dp))
-            // Photo
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .heightIn(max = maxPhotoH)
-                    .aspectRatio(ratio)
-                    .onGloballyPositioned { onPhotoPositioned(it.boundsInRoot()) }
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF1A1A1E))
-                    .graphicsLayer { alpha = photoAlpha },
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current).data(item.uri).crossfade(false).build(),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-                if (item.isVideo) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("▶", color = Color.White, fontSize = 36.sp)
-                    }
+    Box(Modifier.fillMaxSize().background(Color(0xFF0E0E10))) {
+        // ── Fixed photo under the sheet ──
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 98.dp, start = 16.dp, end = 16.dp)
+                .fillMaxWidth()
+                .height(photoH)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF1A1A1E))
+                .graphicsLayer { alpha = if (photoVisible) 1f else 0f },
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current).data(item.uri).crossfade(false).build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            if (item.isVideo) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("▶", color = Color.White, fontSize = 36.sp)
                 }
             }
+        }
 
-            Spacer(Modifier.height(14.dp))
-
-            // Sheet
+        // ── Scroll: spacer reveals photo, sheet rides up over it ──
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.foundation.LocalOverscrollConfiguration provides null,
+        ) {
             Column(
                 Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                    .background(Letify.colors.container)
-                    .padding(bottom = 40.dp),
+                    .fillMaxSize()
+                    .nestedScroll(elastic.connection)
+                    .graphicsLayer { translationY = elastic.verticalOverscroll.floatValue }
+                    .verticalScroll(scroll),
             ) {
-                Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-                    Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(99.dp)).background(Letify.colors.track))
-                }
-                Column(Modifier.fillMaxWidth()) {
+                // Transparent spacer = header + photo + gap (photo shows through)
+                Spacer(Modifier.height(98.dp + photoH + 14.dp))
+
+                // Sheet
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                        .background(Letify.colors.container)
+                        .padding(bottom = 40.dp),
+                ) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(99.dp))
+                                .background(Letify.colors.track),
+                        )
+                    }
+
                     Text(
                         formatDayTitle(dateKey),
                         color = Letify.colors.text,
@@ -488,12 +517,12 @@ private fun MomentDayContent(
                     )
 
                     if (dayItems.size > 1) {
-                        // Edge-to-edge horizontal strip: break out of 20.dp parent padding
-                        // so thumbs scroll to the screen edges instead of clipping.
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
+                                .nestedScroll(stripElastic.connection)
+                                .graphicsLayer { translationX = stripElastic.horizontalOverscroll.floatValue }
+                                .horizontalScroll(stripScroll)
                                 .padding(bottom = 12.dp),
                         ) {
                             Spacer(Modifier.width(20.dp))
@@ -528,7 +557,10 @@ private fun MomentDayContent(
                         }
                     }
 
-                    NoFeedbackButton(onClick = onOpenEditor, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    NoFeedbackButton(
+                        onClick = onOpenEditor,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    ) {
                         Column(
                             Modifier
                                 .fillMaxWidth()
@@ -564,12 +596,12 @@ private fun MomentDayContent(
                         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        DayStat(Modifier.weight(1f), weight?.let { String.format(Locale.US, "%.1f", it) } ?: "—", "кг")
+                        DayStat(Modifier.weight(1f), weight?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—", "кг")
                         DayStat(
                             Modifier.weight(1f),
                             if (waterMl > 0) {
                                 val l = waterMl / 1000f
-                                if (l >= 1f) String.format(Locale.US, "%.1f", l) else waterMl.toString()
+                                if (l >= 1f) String.format(java.util.Locale.US, "%.1f", l) else waterMl.toString()
                             } else "—",
                             if (waterMl >= 1000) "л" else "мл",
                         )
@@ -597,15 +629,37 @@ private fun MomentDayContent(
                         ) {
                             tasks.forEachIndexed { i, task ->
                                 val done = task.isCompletedOn(dateKey)
-                                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Letify.colors.container), contentAlignment = Alignment.Center) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(28.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Letify.colors.container),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
                                         SolarIcon(name = task.icon, tint = task.color, size = 14.dp)
                                     }
                                     Spacer(Modifier.width(10.dp))
-                                    Text(task.name, color = Letify.colors.text, style = Letify.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1)
-                                    Text(if (done) "готово" else "—", color = if (done) Color(0xFF4ECB71) else Letify.colors.muted, style = Letify.typography.bodySmall, fontWeight = if (done) FontWeight.SemiBold else FontWeight.Normal)
+                                    Text(
+                                        task.name,
+                                        color = Letify.colors.text,
+                                        style = Letify.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                    )
+                                    Text(
+                                        if (done) "готово" else "—",
+                                        color = if (done) Color(0xFF4ECB71) else Letify.colors.muted,
+                                        style = Letify.typography.bodySmall,
+                                        fontWeight = if (done) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
                                 }
-                                if (i < tasks.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(Letify.colors.track))
+                                if (i < tasks.lastIndex) {
+                                    Box(Modifier.fillMaxWidth().height(1.dp).background(Letify.colors.track))
+                                }
                             }
                         }
                     }
@@ -629,15 +683,35 @@ private fun MomentDayContent(
                                 .padding(horizontal = 14.dp),
                         ) {
                             state.meals.forEachIndexed { i, meal ->
-                                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Letify.colors.container), contentAlignment = Alignment.Center) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(28.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Letify.colors.container),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
                                         SolarIcon(name = meal.icon, tint = meal.color, size = 14.dp)
                                     }
                                     Spacer(Modifier.width(10.dp))
-                                    Text(meal.title, color = Letify.colors.text, style = Letify.typography.bodyMedium, modifier = Modifier.weight(1f))
-                                    Text(meal.kcal?.toString() ?: "—", color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                                    Text(
+                                        meal.title,
+                                        color = Letify.colors.text,
+                                        style = Letify.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        meal.kcal?.toString() ?: "—",
+                                        color = Letify.colors.muted,
+                                        style = Letify.typography.bodySmall,
+                                    )
                                 }
-                                if (i < state.meals.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(Letify.colors.track))
+                                if (i < state.meals.lastIndex) {
+                                    Box(Modifier.fillMaxWidth().height(1.dp).background(Letify.colors.track))
+                                }
                             }
                         }
                     }
@@ -646,7 +720,7 @@ private fun MomentDayContent(
             }
         }
 
-        // Fixed header buttons
+        // Fixed header
         Box(
             Modifier
                 .fillMaxWidth()
@@ -667,32 +741,6 @@ private fun MomentDayContent(
         }
     }
 }
-
-@Composable
-private fun CircleHeaderBtn(onClick: () -> Unit, content: @Composable () -> Unit) {
-    NoFeedbackButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.28f)),
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
-    }
-}
-
-@Composable
-private fun DayStat(modifier: Modifier, value: String, label: String) {
-    Column(
-        modifier.clip(RoundedCornerShape(14.dp)).background(Letify.colors.bg).padding(vertical = 12.dp, horizontal = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(value, color = Letify.colors.text, style = Letify.typography.titleSmall, fontWeight = FontWeight.Bold)
-        Text(label, color = Letify.colors.muted, style = Letify.typography.labelSmall, modifier = Modifier.padding(top = 3.dp))
-    }
-}
-
-// ── Note editor (fullscreen, transparent top) ──────────────────────────────
 
 @Composable
 private fun NoteEditorScreen(
