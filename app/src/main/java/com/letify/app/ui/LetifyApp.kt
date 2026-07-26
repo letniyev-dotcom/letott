@@ -832,16 +832,35 @@ private fun CachedTabPager(
                         // recompose every animation frame. That was the main lag.
                         val raw = progress.value
                         val p = if (pending && raw >= 0.999f) 0f else raw
+                        val heroParallax = 0.28f
                         val dx = if (isAvatarPair && !parked) {
-                            val parallax = 0.28f
                             when {
-                                tab == activeFrom && activeTo == Tab.Profile -> -p * parallax * w
+                                tab == activeFrom && activeTo == Tab.Profile -> -p * heroParallax * w
                                 tab == activeTo && activeTo == Tab.Profile -> (1f - p) * w
                                 tab == activeFrom && activeTo == Tab.Home -> p * w
-                                tab == activeTo && activeTo == Tab.Home -> -(1f - p) * parallax * w
+                                tab == activeTo && activeTo == Tab.Home -> -(1f - p) * heroParallax * w
                                 else -> 0f
                             }
                         } else when {
+                            // Home parked behind a SETTLED Profile is a special
+                            // case: the hero flight only ever shifts Home by
+                            // heroParallax*w (it never fully leaves, Profile
+                            // just covers it) — so its resting/parked position
+                            // must match that shifted spot, not the generic
+                            // fully-off-screen `w` other unrelated tabs park at.
+                            // Parking it at `w` here (its old value) meant that
+                            // the instant a Profile→Home close begins, Home's
+                            // dx had to jump from `w` to `-heroParallax*w` in a
+                            // single frame — exactly when alpha also flips from
+                            // 0 to 1, so the jump was fully visible as a pop/
+                            // snap right at the start of every close. Home→
+                            // Profile opens never had this problem: Home starts
+                            // that flight already active at dx=0 (not parked),
+                            // and Profile's OWN parked value already is `w`,
+                            // matching its flight-start value exactly.
+                            parked && tab == Tab.Home &&
+                                activeFrom == Tab.Profile && activeTo == Tab.Profile ->
+                                -heroParallax * w
                             parked -> w
                             tab == activeTo -> (1f - p) * activeDir * w
                             tab == activeFrom -> -p * activeDir * w
