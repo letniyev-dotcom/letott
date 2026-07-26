@@ -241,6 +241,29 @@
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
 
+## r227-profile-flight-edge-jank (versionCode 227)
+- **Рывок именно в начале и в конце полёта (не по всей длине) — найдена настоящая
+  причина:** `usePlaceholder`/`hideAvatarName` передавался в `HomeScreen`/
+  `ProfileScreen` как обычный `Boolean`, вычисленный в композиции. Он меняет
+  значение ровно 2 раза за переход — в момент старта и в момент завершения. Так
+  как это самый обычный параметр функции (не `State`, читаемый в draw-фазе), его
+  смена заставляла Compose ПО-НАСТОЯЩЕМУ пересобрать весь `HomeScreen`/
+  `ProfileScreen` целиком (все задачи, прогрессы, форматирование даты и т.п.) —
+  два раза за один перелёт, ровно на границах. В середине полёта всё было
+  гладко, потому что там читается только `progress.value` в draw-фазе (как и
+  задумано) — отсюда и характерная картина «дёрг в начале, гладко, дёрг в конце».
+- Заодно вскрылось, что мой же собственный фикс из r226 (`animationsActive =
+  tabSettled`) страдал ТОЙ ЖЕ болезнью и был даже более частым триггером —
+  `tabSettled` читался через `by`-делегат как обычный `Boolean`, значит любое
+  переключение таба (не только Home↔Profile) заново пересобирало весь Home.
+- ФИКС (тот же приём, что уже работал для `progress`): и `hideAvatarName`, и
+  `animationsActive` теперь стабильные `State<Boolean>`-объекты. Сам объект
+  передаётся вниз БЕЗ ЧТЕНИЯ `.value` в `HomeScreen`/`ProfileScreen` — только в
+  месте фактического использования (`graphicsLayer{}` для аватарки/имени —
+  draw-фаза; `MetricCard` — свой маленький, изолированный recompose-scope).
+  Экраны целиком больше не пересобираются ни на старте, ни на финише перехода.
+- versionCode 226→227.
+
 ## r226-profile-flight-stutter (versionCode 226)
 - **Полёт Home↔Profile всё ещё дёргался после фикса мигания аватарки:** причина №2 —
   4 карточки метрик на Home держат Lottie-стикеры (сэндвич/кола/кот/гиря) с

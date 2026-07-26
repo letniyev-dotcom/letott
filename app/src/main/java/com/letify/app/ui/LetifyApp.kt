@@ -27,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -318,7 +320,15 @@ fun LetifyApp() {
     // moving frame, never one frame early (which would re-introduce a hitch).
     // Driven by CachedTabPager.onSettledChange: false the instant a tab-switch
     // slide starts, true exactly when it settles (no fixed delay guesswork).
-    var tabSettled by remember { mutableStateOf(true) }
+    // NOT `by` here on purpose: we need the raw State object itself to hand
+    // to HomeScreen (see animationsActive below) so it stays a STABLE
+    // reference across recompositions — only .value changes. `by` would
+    // unwrap it to a plain Boolean at every read site, and passing that
+    // Boolean into HomeScreen would force a full HomeScreen recompose each
+    // time it flips (same bug as the old hideAvatarName — see placeholderState
+    // above). tabSettled flips on EVERY tab switch, not just the hero
+    // flight, so this one was actually the more frequent offender.
+    val tabSettledState = remember { mutableStateOf(true) }
 
     // Single identity for avatar+name (Home ⇄ Profile).
     // There is exactly ONE composable that paints them — at the root.
@@ -336,7 +346,7 @@ fun LetifyApp() {
                 CachedTabPager(
                     current = state.currentTab,
                     order = state.navbarOrder,
-                    onSettledChange = { tabSettled = it },
+                    onSettledChange = { tabSettledState.value = it },
                     modifier = Modifier.fillMaxSize(),
                     identity = { t ->
                         val density = LocalDensity.current
@@ -408,7 +418,7 @@ fun LetifyApp() {
                                 // reached Home) — they were invalidating every frame
                                 // the whole time, fighting the hero flight for frame
                                 // budget and reading as stutter during Home⇄Profile.
-                                animationsActive = tabSettled,
+                                animationsActive = tabSettledState,
                             )
                             Tab.Nutrition -> {
                                 androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -705,7 +715,7 @@ private fun CachedTabPager(
      * at rest and during the flight. Screens only reserve empty slots.
      */
     identity: (@Composable (t: Float) -> Unit)? = null,
-    content: @Composable (tab: Tab, usePlaceholder: Boolean) -> Unit,
+    content: @Composable (tab: Tab, usePlaceholder: State<Boolean>) -> Unit,
 ) {
     val visited = remember { mutableStateListOf<Tab>() }
     if (current !in visited) visited.add(current)
@@ -715,6 +725,14 @@ private fun CachedTabPager(
     val progress = remember { Animatable(1f) }
     // Stable for the whole flight — never flip mid-animation.
     var avatarPairFlight by remember { mutableStateOf(false) }
+    // Same idea as `progress`: a stable holder that HomeScreen/ProfileScreen
+    // read ONLY inside their graphicsLayer{} (draw phase) for the avatar/name
+    // alpha. Passing usePlaceholder as a plain Boolean parameter used to force
+    // a full HomeScreen/ProfileScreen recomposition — every task/list/date
+    // recalculated — at the exact moment it flips (flight start AND flight
+    // end), which is exactly the "рывок в начале и в конце" jank: smooth
+    // mid-flight (draw-phase only) but a real recompute hit on both edges.
+    val placeholderState = remember { mutableStateOf(false) }
 
     LaunchedEffect(current) {
         if (current != toTab) {
@@ -754,6 +772,7 @@ private fun CachedTabPager(
         val settledHome = !isAvatarPair && activeFrom == Tab.Home && activeTo == Tab.Home
         val settledProfile = !isAvatarPair && activeFrom == Tab.Profile && activeTo == Tab.Profile
         val showIdentity = isAvatarPair || settledHome || settledProfile
+        SideEffect { placeholderState.value = showIdentity }
         val activeDir =
             if (order.indexOf(activeTo).coerceAtLeast(0) >= order.indexOf(activeFrom).coerceAtLeast(0))
                 1f else -1f
@@ -767,7 +786,8 @@ private fun CachedTabPager(
             val isProfileTab = tab == Tab.Profile
             val isHomeTab = tab == Tab.Home
             // Home/Profile always use the root identity painter while either is active.
-            val usePlaceholder = showIdentity && (isHomeTab || isProfileTab)
+            // (Actual on/off is read from the stable `placeholderState` below —
+            // not recomputed here — so toggling it never recomposes the screens.)
             // z-order for the Home↔Profile hero: Profile is always the foreground
             // plate of the pair (full-width travel); Home only does the small
             // parallax shift. For other tab pairs, the arriving tab is on top.
@@ -810,7 +830,7 @@ private fun CachedTabPager(
                     // translated/clipped layer as the content (not a static plate).
                     .background(Letify.colors.bg),
             ) {
-                content(tab, usePlaceholder)
+                content(tab, placeholderState)
             }
         }
 

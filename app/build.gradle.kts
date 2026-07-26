@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 226
-        versionName = "r226-profile-flight-stutter"
+        versionCode = 227
+        versionName = "r227-profile-flight-edge-jank"
         vectorDrawables { useSupportLibrary = true }
     }
 

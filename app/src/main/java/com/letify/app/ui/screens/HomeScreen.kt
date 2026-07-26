@@ -30,7 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,7 +90,12 @@ fun HomeScreen(
     // Hero-style avatar/name flight (see LetifyApp.AvatarFlightOverlay): while a
     // flight is in progress the real header glyphs are hidden (alpha 0, still
     // laid out) and a single overlay element flies in their place instead.
-    hideAvatarName: Boolean = false,
+    // Stable State, not a plain Boolean: read ONLY inside graphicsLayer{}
+    // (draw phase) below. A plain Boolean here used to force a full
+    // HomeScreen recomposition (every task/date/progress recalculated)
+    // at the exact moment the flight starts and again when it ends —
+    // that recompute burst was the "рывок в начале и в конце".
+    hideAvatarName: State<Boolean> = remember { mutableStateOf(false) },
     onAvatarBoundsChanged: (Rect) -> Unit = {},
     onNameBoundsChanged: (Rect) -> Unit = {},
     // The 4 metric-card stickers (sandwich/coke/cat/weight-hand) are
@@ -104,7 +112,14 @@ fun HomeScreen(
     // for that ~500ms and resume the instant motion settles — imperceptible
     // as a freeze, but frees up every frame of the flight for the animation
     // that actually needs to be smooth.
-    animationsActive: Boolean = true,
+    //
+    // IMPORTANT: this is a stable State, not a plain Boolean, and HomeScreen
+    // must forward the object AS-IS below (never read .value itself) — same
+    // reasoning as hideAvatarName above. If HomeScreen read .value here to
+    // decide what to pass down, that read would sit in HomeScreen's own
+    // recompose scope and we'd be back to a full HomeScreen recompose on
+    // every tab switch, not just the 4 small MetricCards reacting.
+    animationsActive: State<Boolean> = remember { mutableStateOf(true) },
 ) {
     val state = LocalAppState.current
     val context = LocalContext.current
@@ -168,7 +183,7 @@ fun HomeScreen(
                     Modifier
                         .size(34.dp)
                         .onGloballyPositioned { onAvatarBoundsChanged(it.boundsInRoot()) }
-                        .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f }
+                        .graphicsLayer { alpha = if (hideAvatarName.value) 0f else 1f }
                         .clip(CircleShape)
                         .background(
                             Brush.linearGradient(listOf(Letify.colors.accent, LetifyColors.TilePink)),
@@ -199,7 +214,7 @@ fun HomeScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .onGloballyPositioned { onNameBoundsChanged(it.boundsInRoot()) }
-                        .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f },
+                        .graphicsLayer { alpha = if (hideAvatarName.value) 0f else 1f },
                     textAlign = TextAlign.Start,
                 )
                 Spacer(Modifier.weight(1f))
@@ -595,7 +610,7 @@ private fun MetricCard(
     label: String,
     color: Color,
     onAdd: () -> Unit,
-    animationsActive: Boolean = true,
+    animationsActive: State<Boolean> = remember { mutableStateOf(true) },
 ) {
     Column(
         modifier
@@ -604,10 +619,12 @@ private fun MetricCard(
             .padding(15.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // .value read HERE — MetricCard's own recompose scope, isolated
+            // from HomeScreen. Only these 4 small cards react when it flips.
             LottieAnimation(
                 composition = composition,
                 iterations = LottieConstants.IterateForever,
-                isPlaying = animationsActive,
+                isPlaying = animationsActive.value,
                 modifier = Modifier.size(36.dp),
             )
             Spacer(Modifier.width(9.dp))

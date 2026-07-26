@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,7 +85,10 @@ fun ProfileScreen(
     // Hero-style avatar/name flight (see LetifyApp.AvatarFlightOverlay): while a
     // flight is in progress the real header glyphs are hidden (alpha 0, still
     // laid out) and a single overlay element flies in their place instead.
-    hideAvatarName: Boolean = false,
+    // See HomeScreen.kt — same fix: stable State read only in the
+    // graphicsLayer{} draw phase, so toggling it no longer forces a full
+    // ProfileScreen recomposition at flight start/end.
+    hideAvatarName: State<Boolean> = remember { mutableStateOf(false) },
     onAvatarBoundsChanged: (Rect) -> Unit = {},
     onNameBoundsChanged: (Rect) -> Unit = {},
 ) {
@@ -131,7 +135,7 @@ fun ProfileScreen(
                 Modifier
                     .size(108.dp)
                     .onGloballyPositioned { onAvatarBoundsChanged(it.boundsInRoot()) }
-                    .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f }
+                    .graphicsLayer { alpha = if (hideAvatarName.value) 0f else 1f }
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(listOf(Letify.colors.accent, LetifyColors.TilePink)),
@@ -169,7 +173,7 @@ fun ProfileScreen(
                 style = Letify.typography.headlineLarge,
                 modifier = Modifier
                     .onGloballyPositioned { onNameBoundsChanged(it.boundsInRoot()) }
-                    .graphicsLayer { alpha = if (hideAvatarName) 0f else 1f },
+                    .graphicsLayer { alpha = if (hideAvatarName.value) 0f else 1f },
             )
         }
         Box(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 10.dp), contentAlignment = Alignment.Center) {
