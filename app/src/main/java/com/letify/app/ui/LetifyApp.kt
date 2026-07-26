@@ -330,6 +330,21 @@ fun LetifyApp() {
     // flight, so this one was actually the more frequent offender.
     val tabSettledState = remember { mutableStateOf(true) }
 
+    // Rapid double-tap (open→close→open before the 520ms flight finishes)
+    // used to change `current` again while the LaunchedEffect below was
+    // still mid-`progress.animateTo`. Compose cancels + restarts that
+    // LaunchedEffect on any `current` change, and the restart does
+    // `progress.snapTo(0f)` unconditionally — discarding wherever the
+    // interrupted flight visually was and yanking it back to 0 instantly.
+    // That's the "быстро тыкать — всё мигает/дёргается": the screen jumps
+    // to "arrived", then snaps back, then reflies. Routing every tab switch
+    // through this instead of writing `state.currentTab` directly means a
+    // tap that lands while `tabSettledState` is still false is simply
+    // dropped — the in-flight animation is left to finish untouched. 520ms/
+    // 320ms is short enough that an extra tap in that window reads as
+    // "ignored", not as the app being unresponsive.
+    val changeTab: (Tab) -> Unit = { tab -> if (tabSettledState.value) state.currentTab = tab }
+
     // Single identity for avatar+name (Home ⇄ Profile).
     // There is exactly ONE composable that paints them — at the root.
     // Home/Profile only keep empty size slots (placeholders). No copy, no hide-of-real.
@@ -407,8 +422,8 @@ fun LetifyApp() {
                                 onOpenNutrition = { push(AddOverlay.NutritionHub) },
                                 onAddSleep = { push(AddOverlay.Sleep) },
                                 onAddMeal = { push(AddOverlay.Nutrition) },
-                                onOpenProfile = { state.currentTab = Tab.Profile },
-                                onOpenPlan = { state.currentTab = Tab.Plan },
+                                onOpenProfile = { changeTab(Tab.Profile) },
+                                onOpenPlan = { changeTab(Tab.Plan) },
                                 onOpenMoments = { push(AddOverlay.Media) },
                                 // Placeholder only — the one real identity is at the root.
                                 hideAvatarName = usePlaceholder,
@@ -427,14 +442,14 @@ fun LetifyApp() {
                                 Box(Modifier.fillMaxSize())
                             }
                             Tab.Plan -> PlanScreen(
-                                onBack = { state.currentTab = Tab.Home },
+                                onBack = { changeTab(Tab.Home) },
                                 onAddHabit = { push(AddOverlay.Habit()) },
                                 onAddTask = { push(AddOverlay.Task()) },
                                 onEditHabit = { id -> push(AddOverlay.Habit(id)) },
                                 onEditTask = { id -> push(AddOverlay.Task(id)) },
                             )
                             Tab.Profile -> ProfileScreen(
-                                onBack = { state.currentTab = Tab.Home },
+                                onBack = { changeTab(Tab.Home) },
                                 onEditProfile = { push(AddOverlay.EditProfile) },
                                 onGoals = { push(AddOverlay.Goals) },
                                 onAppearance = { push(AddOverlay.Appearance) },

@@ -241,6 +241,27 @@
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
 
+## r228-profile-flight-rapid-tap (versionCode 228)
+- **«Если быстро тыкать открытие/закрытие — всё мигает, дёргается»:** причина —
+  прерывание полёта на середине. `LaunchedEffect(current)` перезапускается
+  Compose-ом на КАЖДОЕ изменение `current` (таба). Если второй тап приходит до
+  того, как `progress.animateTo(1f, ...)` из первого долетел до конца, корутина
+  обрывается прямо посреди полёта, и новый запуск сразу делает
+  `progress.snapTo(0f)` — безусловно, не глядя на то, где реально была
+  анимация в момент обрыва. Экран телепортируется, будто долетел, потом
+  дёргается обратно в 0 и летит заново — отсюда мигание/рывки именно при
+  быстрых повторных тапах.
+- ФИКС: вся пользовательская навигация между табами (`onOpenProfile`,
+  `onOpenPlan`, `PlanScreen.onBack`, `ProfileScreen.onBack`) теперь идёт через
+  один `changeTab(tab)`, который просто игнорирует тап, если
+  `tabSettledState.value == false` (то есть предыдущий перелёт ещё не
+  доиграл). Каждый перелёт теперь атомарный: либо целиком доигрывает, либо
+  тап, пришедший во время него, отбрасывается — окно 320–520мс, лишний тап в
+  этот момент читается как «не успел», а не как лаг. Автоматический редирект
+  с несуществующего Nutrition-таба и первичная установка таба по умолчанию
+  оставлены без гварда — они не завязаны на пользовательский тап.
+- versionCode 227→228.
+
 ## r227-profile-flight-edge-jank (versionCode 227)
 - **Рывок именно в начале и в конце полёта (не по всей длине) — найдена настоящая
   причина:** `usePlaceholder`/`hideAvatarName` передавался в `HomeScreen`/

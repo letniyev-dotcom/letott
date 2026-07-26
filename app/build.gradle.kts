@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 227
-        versionName = "r227-profile-flight-edge-jank"
+        versionCode = 228
+        versionName = "r228-profile-flight-rapid-tap"
         vectorDrawables { useSupportLibrary = true }
     }
 
