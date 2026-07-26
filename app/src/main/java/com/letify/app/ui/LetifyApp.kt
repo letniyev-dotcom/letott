@@ -387,15 +387,10 @@ fun LetifyApp() {
                         // Measure the real glyph boxes so the flying label lands
                         // exactly where Home / Profile place it (no drift).
                         val measurer = rememberTextMeasurer()
-                        // Keyed on `name` only — NOT recomputed on every t/frame.
-                        // identity(t) is recomposed once per animation frame
-                        // (IdentityFlightHost reads progress.value directly so
-                        // it can stay isolated from the tab screens), so any
-                        // unmemoized work here used to run 60×/sec for the
-                        // whole 520ms flight. The glyph layout never changes
-                        // mid-flight — only the interpolated Rect it's placed
-                        // into does — so it's safe (and much cheaper) to
-                        // remember it.
+                        // Keyed on `name` only. `t` is now `() -> Float`, read
+                        // only inside UserIdentity's graphicsLayer{} blocks — so
+                        // this whole lambda body (and therefore this remember)
+                        // runs at flight start/end only, not 60×/sec per frame.
                         val homeLayout = remember(name) {
                             measurer.measure(
                                 AnnotatedString(name),
@@ -744,7 +739,7 @@ private fun CachedTabPager(
      * 1 = profile layout. Drawn whenever Home or Profile owns the surface —
      * at rest and during the flight. Screens only reserve empty slots.
      */
-    identity: (@Composable (t: Float) -> Unit)? = null,
+    identity: (@Composable (t: () -> Float) -> Unit)? = null,
     content: @Composable (tab: Tab, usePlaceholder: State<Boolean>) -> Unit,
 ) {
     val visited = remember { mutableStateListOf<Tab>() }
@@ -865,8 +860,10 @@ private fun CachedTabPager(
         }
 
         if (showIdentity && identity != null) {
-            // Isolated reader of progress — only this lightweight overlay
-            // recomposes per frame, never the tab screens above.
+            // progress.value is read only inside graphicsLayer{} in
+            // IdentityFlightHost/UserIdentity — same draw-phase-only rule as
+            // the tab content above — so neither this overlay nor the tab
+            // screens recompose per animation frame.
             IdentityFlightHost(
                 progress = progress,
                 pending = pending,
@@ -881,8 +878,24 @@ private fun CachedTabPager(
 }
 
 /**
- * Reads [progress] in its own composition scope so the tab pages never
- * recompose on every flight frame. Emits absolute t ∈ [0,1] (0 = home, 1 = profile).
+ * Emits absolute t ∈ [0,1] (0 = home, 1 = profile) as a DEFERRED reader,
+ * not a Float. `identity` and everything below it must call the lambda only
+ * from inside a graphicsLayer{} (draw phase) — never in composition.
+ *
+ * This used to read `progress.value` directly in the composable body and
+ * pass the resolved Float down. That looked "isolated" (only this overlay
+ * recomposed, not the tab screens), but it still meant a REAL recomposition
+ * of the whole avatar+name subtree ~60×/sec for the full 520ms flight —
+ * competing with the tab content's draw phase for the same choreographer
+ * frame. On a loaded frame that recomposition work is what pushed the
+ * screen-slide's own draw past the vsync deadline, which read as the
+ * screen-open animation "дрожит" specifically during the flight (the two
+ * are on the same frame, so a stall in one shows up as jitter in both).
+ * Tab content already avoids this (progress.value is read inside its own
+ * graphicsLayer{}, see CachedTabPager below) — this brings the identity
+ * overlay to the same discipline. Now IdentityFlightHost/UserIdentity only
+ * recompose when pending/flying/settledX actually change (flight start and
+ * end — a couple of times, not every frame).
  */
 @Composable
 private fun IdentityFlightHost(
@@ -892,28 +905,30 @@ private fun IdentityFlightHost(
     activeToProfile: Boolean,
     settledProfile: Boolean,
     settledHome: Boolean,
-    identity: @Composable (t: Float) -> Unit,
+    identity: @Composable (t: () -> Float) -> Unit,
 ) {
-    val raw = progress.value
-    val p = if (pending && raw >= 0.999f) 0f else raw
     // activeToProfile is composition-stable for the flight and correct even on
     // the pre-LaunchedEffect frame (where flightToProfile flag is still stale).
-    val t = when {
-        settledProfile -> 1f
-        settledHome -> 0f
-        flying && activeToProfile -> p
-        flying && !activeToProfile -> 1f - p
-        activeToProfile -> 1f
-        else -> 0f
+    val computeT: () -> Float = {
+        val raw = progress.value
+        val p = if (pending && raw >= 0.999f) 0f else raw
+        when {
+            settledProfile -> 1f
+            settledHome -> 0f
+            flying && activeToProfile -> p
+            flying && !activeToProfile -> 1f - p
+            activeToProfile -> 1f
+            else -> 0f
+        }
     }
     Box(Modifier.fillMaxSize().zIndex(20f)) {
-        identity(t)
+        identity(computeT)
     }
 }
 
 @Composable
 private fun UserIdentity(
-    progress: Float,
+    progress: () -> Float,
     sourceAvatar: Rect,
     targetAvatar: Rect,
     sourceName: Rect,
@@ -926,10 +941,6 @@ private fun UserIdentity(
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
-    val t = progress.coerceIn(0f, 1f)
-    val avatarRect = lerp(sourceAvatar, targetAvatar, t)
-    val nameRect = lerp(sourceName, targetName, t)
-    val fontSp = sourceFontSp + (targetFontSp - sourceFontSp) * t
     val avatarBrush = Brush.linearGradient(
         listOf(Letify.colors.accent, LetifyColors.TilePink),
     )
@@ -937,11 +948,19 @@ private fun UserIdentity(
     // Size is applied via scale from a fixed source size so we don't re-layout
     // the avatar every frame (only graphicsLayer transform updates).
     val srcSize = sourceAvatar.width.coerceAtLeast(1f)
-    val scale = avatarRect.width / srcSize
 
     Box(
         Modifier
             .graphicsLayer {
+                // `progress()` is called HERE — inside the draw-phase lambda —
+                // not above in the composable body. That's the whole fix: this
+                // Box (and the Text below) no longer recompose on every flight
+                // frame, only the layer's transform is re-drawn. See the
+                // IdentityFlightHost doc comment for why that recomposition was
+                // the actual source of the "screen trembles during the flight".
+                val t = progress().coerceIn(0f, 1f)
+                val avatarRect = lerp(sourceAvatar, targetAvatar, t)
+                val scale = avatarRect.width / srcSize
                 // Anchor at the interpolated top-left, then scale about top-left
                 // so the circle grows toward the profile size in place.
                 translationX = avatarRect.left
@@ -962,18 +981,17 @@ private fun UserIdentity(
             fontWeight = FontWeight.Bold,
         )
         if (!photoUrl.isNullOrBlank()) {
-            // IMPORTANT: this Box (and therefore this whole branch) recomposes on
-            // EVERY frame of the Home⇄Profile flight (t changes ~60×/sec for
-            // HeroFlightMs). Building the ImageRequest inline used to allocate a
-            // brand-new request each frame — Coil has no equals() on ImageRequest,
-            // so every frame looked like a genuinely new model: the painter reset
-            // to Loading and re-resolved (even from memory cache) before drawing
-            // Success again. That Loading→Success flip 30+ times in half a second
-            // was the flight's "мигает" + jank. Keying this on photoUrl (not on
-            // progress/t) means the SAME request instance survives the whole
-            // flight — Coil keeps the already-resolved painter and just redraws it
-            // under the animated graphicsLayer transform, so only the transform
-            // (translation/scale) changes per frame, never the image state.
+            // IMPORTANT: keep keying this on photoUrl only, never on progress/t.
+            // This branch no longer recomposes per-frame (t is now read only
+            // inside the graphicsLayer{} above), but if a future change ever
+            // threads t back into composition here, an inline ImageRequest
+            // built fresh each time would regress: Coil has no equals() on
+            // ImageRequest, so every recomposition would look like a brand-new
+            // model and the painter would flip Loading→Success repeatedly —
+            // that flicker was the original "мигает" bug this remember() fixed.
+            // The SAME request instance survives the whole flight; Coil keeps
+            // the already-resolved painter and just redraws it under the
+            // animated graphicsLayer transform.
             val avatarRequest = remember(context, photoUrl) {
                 ImageRequest.Builder(context).data(photoUrl).crossfade(false).build()
             }
@@ -1006,7 +1024,6 @@ private fun UserIdentity(
     // origin as the translation) is a pure GPU transform — no re-shaping —
     // and lands on the same visual size at t=1 as a native targetFontSp
     // layout would.
-    val nameScale = fontSp / sourceFontSp
     Text(
         name,
         color = Letify.colors.text,
@@ -1015,6 +1032,14 @@ private fun UserIdentity(
         maxLines = 1,
         softWrap = false,
         modifier = Modifier.graphicsLayer {
+            // Same deferred-read fix as the avatar Box above: t/rect/scale are
+            // resolved HERE, in draw phase, so this Text never recomposes
+            // (and never re-shapes glyphs) on animation frames — only its
+            // layer transform is redrawn.
+            val t = progress().coerceIn(0f, 1f)
+            val nameRect = lerp(sourceName, targetName, t)
+            val fontSp = sourceFontSp + (targetFontSp - sourceFontSp) * t
+            val nameScale = fontSp / sourceFontSp
             translationX = nameRect.left
             translationY = nameRect.top
             scaleX = nameScale
