@@ -992,16 +992,34 @@ private fun UserIdentity(
     // would draw it. No fixed-width box mid-flight (that was clipping /
     // shifting the baseline when the interpolated width disagreed with the
     // live fontSize).
+    //
+    // IMPORTANT: fontSize is FIXED at sourceFontSp here — it is NOT animated
+    // via the `fontSize` parameter. That used to be `fontSize = fontSp.sp`
+    // with `fontSp` interpolating every frame, which meant Compose had to
+    // re-shape the glyphs (real text layout via the platform's text engine)
+    // on every single frame of the flight — a genuinely more expensive
+    // operation than a transform, unlike the avatar (which was already
+    // transform-scaled, not re-measured). That per-frame reshape is what
+    // read as "дрожит, не плавная" over the whole flight, as opposed to the
+    // one-off hitches already fixed elsewhere. Growing the SAME fixed-size
+    // glyph layout via graphicsLayer scale (anchored at the same top-left
+    // origin as the translation) is a pure GPU transform — no re-shaping —
+    // and lands on the same visual size at t=1 as a native targetFontSp
+    // layout would.
+    val nameScale = fontSp / sourceFontSp
     Text(
         name,
         color = Letify.colors.text,
-        fontSize = fontSp.sp,
+        fontSize = sourceFontSp.sp,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
         softWrap = false,
         modifier = Modifier.graphicsLayer {
             translationX = nameRect.left
             translationY = nameRect.top
+            scaleX = nameScale
+            scaleY = nameScale
+            transformOrigin = TransformOrigin(0f, 0f)
         },
     )
 }

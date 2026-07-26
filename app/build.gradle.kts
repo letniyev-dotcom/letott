@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 229
-        versionName = "r229-profile-back-navigation"
+        versionCode = 230
+        versionName = "r230-profile-flight-text-reshape"
         vectorDrawables { useSupportLibrary = true }
     }
 

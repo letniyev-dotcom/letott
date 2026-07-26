@@ -241,6 +241,26 @@
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
 
+## r230-profile-flight-text-reshape (versionCode 230)
+- **Дрожание/неплавность по всей длине полёта (не разовый рывок, а именно
+  тряска):** причина — `fontSize = fontSp.sp` у летящего имени. `fontSp`
+  интерполируется каждый кадр (19sp → 22sp), а `fontSize` — настоящий
+  параметр `Text`, а не draw-фазовая трансформация. Смена fontSize на каждом
+  кадре заставляла Compose заново измерять и переукладывать глифы (реальный
+  text shaping через движок платформы) ~60 раз в секунду все 520мс — это
+  ощутимо дороже, чем просто трансформация, и давало именно дрожь/неплавность
+  по всей длине, в отличие от уже пофикшенных точечных рывков на границах.
+  Аватарка этой болезнью не страдала — она уже росла через
+  `graphicsLayer{ scaleX/scaleY }` от фиксированного базового размера, а не
+  через реальный ресайз.
+- ФИКС: имя теперь тоже рисуется ОДИН РАЗ фиксированным `sourceFontSp`, а
+  рост до `targetFontSp` — через `scaleX`/`scaleY` в том же `graphicsLayer`
+  (тот же приём, что и у аватарки), с `transformOrigin` в top-left, чтобы
+  совпадать с уже интерполируемой позицией. На t=1 визуальный размер
+  совпадает с нативным targetFontSp (масштаб = targetFontSp/sourceFontSp).
+  Никакого переизмерения текста в полёте больше нет — только GPU-трансформ.
+- versionCode 229→230.
+
 ## r229-profile-back-navigation (versionCode 229)
 - **Со свайпа/кнопкой back нельзя выйти с Profile (и Plan) на Home:** причина —
   у самого таб-пейджера (Home/Profile/Plan) вообще не было зарегистрировано
