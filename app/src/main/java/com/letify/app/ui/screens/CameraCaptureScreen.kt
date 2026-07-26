@@ -27,6 +27,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,6 +38,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -70,6 +75,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -78,8 +84,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -100,6 +110,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "CameraCapture"
 private const val LENS_FADE_MS = 130
@@ -187,6 +198,22 @@ fun CameraCaptureScreen(
     // Video lock (Telegram-style): drag to padlock while holding to keep recording.
     var recordingLocked by remember { mutableStateOf(false) }
     var lockArmed by remember { mutableStateOf(false) }
+    // Live layout bounds of the shutter / lock / flip buttons, all captured
+    // in the SAME parent's coordinate space (the "capture controls" Box
+    // right below). The shutter's drag gesture reports touch position in
+    // its own local space, so we translate it into that shared space with
+    // shutterBounds.topLeft + localPosition and hit-test it against
+    // lockBounds / flipBounds — this is what lets you drag a finger onto
+    // the real lock / flip icons instead of guessing a fixed pixel offset.
+    var shutterBounds by remember { mutableStateOf(Rect.Zero) }
+    var lockBounds by remember { mutableStateOf(Rect.Zero) }
+    var flipBounds by remember { mutableStateOf(Rect.Zero) }
+    // Edge-triggered: true while the drag point is currently resting over
+    // the flip button, so each fresh drag-in fires exactly one flip (drag
+    // out and back in fires another — "тянуть к ней можно всё время").
+    var flipHover by remember { mutableStateOf(false) }
+    // 0/180/360… — spun a half turn on every flip for a little card-flip feel.
+    val flipRotation = remember { Animatable(0f) }
     // Dual-camera: concurrent front+back when the device supports it.
     var dualMode by remember { mutableStateOf(false) }
     var dualSupported by remember { mutableStateOf(false) }
@@ -577,9 +604,13 @@ fun CameraCaptureScreen(
     }
 
     fun flipCamera() {
-        if (isRecording || captureBusy) return
+        if (captureBusy) return
+        val wasRecording = isRecording && activeRecording != null
         scope.launch {
-            // Dip (never fully blank) → switch lens → bind fades back to full.
+            // Pause (not stop) an in-progress recording so the switch lands
+            // in the SAME clip instead of cutting it — CameraX's Recording
+            // supports this directly, we don't need to stitch files.
+            if (wasRecording) runCatching { activeRecording?.pause() }
             previewAlpha.animateTo(LENS_FADE_MIN_ALPHA, tween(LENS_FADE_MS))
             lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                 CameraSelector.LENS_FACING_FRONT
@@ -587,6 +618,13 @@ fun CameraCaptureScreen(
                 CameraSelector.LENS_FACING_BACK
             }
             bindGeneration++
+            launch { flipRotation.animateTo(flipRotation.value + 180f, tween(340)) }
+            if (wasRecording) {
+                // Give the rebind a beat to attach to the new lens before
+                // resuming, so we don't resume onto a not-yet-bound surface.
+                delay(220)
+                runCatching { activeRecording?.resume() }
+            }
         }
     }
 
@@ -824,7 +862,11 @@ fun CameraCaptureScreen(
             ) {
                 // Left: lock while recording, else thumbnail
                 if (isRecording && !recordingLocked) {
-                    val lockScale = if (lockArmed) 1.15f else 1f
+                    val lockScale by animateFloatAsState(
+                        targetValue = if (lockArmed) 1.22f else 1f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                        label = "lockScale",
+                    )
                     NoFeedbackButton(
                         onClick = {
                             recordingLocked = true
@@ -833,6 +875,7 @@ fun CameraCaptureScreen(
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .size(52.dp)
+                            .onGloballyPositioned { lockBounds = it.boundsInParent() }
                             .graphicsLayer { scaleX = lockScale; scaleY = lockScale },
                     ) {
                         Box(
@@ -845,12 +888,16 @@ fun CameraCaptureScreen(
                                 )
                                 .border(
                                     width = if (lockArmed) 2.dp else 1.dp,
-                                    color = if (lockArmed) Color.White else Color.White.copy(alpha = 0.4f),
+                                    color = if (lockArmed) Letify.colors.accent else Color.White.copy(alpha = 0.4f),
                                     shape = CircleShape,
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("🔒", fontSize = 20.sp)
+                            SolarIcon(
+                                name = "lock-bold-duotone",
+                                tint = if (lockArmed) Letify.colors.accent else Color.White,
+                                size = 22.dp,
+                            )
                         }
                     }
                 } else if (!isRecording) {
@@ -922,46 +969,63 @@ fun CameraCaptureScreen(
                     Modifier
                         .align(Alignment.Center)
                         .size(74.dp)
+                        .onGloballyPositioned { shutterBounds = it.boundsInParent() }
                         .border(3.dp, Color.White, CircleShape)
-                        .pointerInput(isRecording, recordingLocked) {
-                            detectTapGestures(
-                                onTap = {
-                                    when {
-                                        isRecording && recordingLocked -> stopVideo()
-                                        !isRecording -> takePhoto()
-                                    }
-                                },
-                                onLongPress = {
-                                    if (!isRecording) startVideo()
-                                },
-                                onPress = {
-                                    if (isRecording && recordingLocked) return@detectTapGestures
-                                    tryAwaitRelease()
-                                    if (isRecording && !recordingLocked) {
+                        // One gesture handler instead of the previous two
+                        // (a tap detector + a drag detector stacked on the
+                        // same Box) — with two pointerInput blocks racing
+                        // for the same pointer, the tap detector's
+                        // tryAwaitRelease() swallowed every move event
+                        // before the drag detector ever saw them, so
+                        // dragging to the lock/flip icons was unreliable.
+                        // This single awaitEachGesture tracks the whole
+                        // down→(tap | hold→drag)→up sequence itself.
+                        .pointerInput(recordingLocked) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                if (recordingLocked) {
+                                    // Locked & hands-free: this press is just "stop".
+                                    waitForUpOrCancellation()
+                                    stopVideo()
+                                    return@awaitEachGesture
+                                }
+                                var upEarly: PointerInputChange? = null
+                                val releasedBeforeHold = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                    upEarly = waitForUpOrCancellation()
+                                } != null
+                                if (releasedBeforeHold) {
+                                    if (upEarly != null) takePhoto()
+                                    return@awaitEachGesture
+                                }
+                                // Held past the threshold — start recording and
+                                // keep tracking this same finger until it lifts.
+                                startVideo()
+                                flipHover = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                    if (change == null || !change.pressed) {
                                         if (lockArmed) {
                                             recordingLocked = true
                                             lockArmed = false
                                         } else {
                                             stopVideo()
                                         }
+                                        flipHover = false
+                                        break
                                     }
-                                },
-                            )
-                        }
-                        .pointerInput(isRecording, recordingLocked) {
-                            if (!isRecording || recordingLocked) return@pointerInput
-                            detectDragGestures(
-                                onDragEnd = {
-                                    if (lockArmed) {
-                                        recordingLocked = true
-                                        lockArmed = false
-                                    }
-                                },
-                                onDrag = { change, _ ->
                                     change.consume()
-                                    lockArmed = change.position.x < -36f
-                                },
-                            )
+                                    val pointInParent = shutterBounds.topLeft + change.position
+                                    lockArmed = lockBounds.contains(pointInParent)
+                                    val overFlip = flipBounds.contains(pointInParent)
+                                    if (overFlip && !flipHover) {
+                                        flipHover = true
+                                        flipCamera()
+                                    } else if (!overFlip) {
+                                        flipHover = false
+                                    }
+                                }
+                            }
                         },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -972,22 +1036,32 @@ fun CameraCaptureScreen(
                     )
                 }
 
-                // Flip — right
-                if (!isRecording) {
-                    NoFeedbackButton(
-                        onClick = { flipCamera() },
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(48.dp),
+                // Flip — right. Stays visible during recording too (it used to
+                // vanish the moment you started holding), so it's always
+                // there to drag a finger onto — see the gesture loop above.
+                NoFeedbackButton(
+                    onClick = { flipCamera() },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(48.dp)
+                        .onGloballyPositioned { flipBounds = it.boundsInParent() },
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                if (flipHover) Letify.colors.accent.copy(alpha = 0.85f)
+                                else Color.Black.copy(alpha = 0.35f),
+                                CircleShape,
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.35f), CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            SolarIcon(name = "restart-bold", tint = Color.White, size = 22.dp)
-                        }
+                        SolarIcon(
+                            name = "restart-bold",
+                            tint = Color.White,
+                            size = 22.dp,
+                            modifier = Modifier.graphicsLayer { rotationY = flipRotation.value },
+                        )
                     }
                 }
             }
@@ -1071,13 +1145,22 @@ private fun CameraToolsBar(
     val timerActive = timerSec > 0
     val zoomActive = useUltraWide
     val dualActive = dualMode
+    val density = LocalDensity.current
+    // Center-x of the sun icon within THIS Box, so the bubble (and its
+    // tail) can sit directly above the button that opened it instead of
+    // always snapping to the row's center — that mismatch, plus the
+    // bubble just appearing/disappearing with no transition, was the
+    // "странная, корявая" brightness control.
+    var sunCenterX by remember { mutableFloatStateOf(0f) }
+    var barWidthPx by remember { mutableFloatStateOf(0f) }
 
     // Fixed 44dp-tall strip so the exposure popup never shifts the row.
     // Popup uses unbounded wrapContentSize + offset to draw above the icons.
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(44.dp),
+            .height(44.dp)
+            .onGloballyPositioned { barWidthPx = it.size.width.toFloat() },
     ) {
         Row(
             Modifier
@@ -1121,6 +1204,7 @@ private fun CameraToolsBar(
                 onClick = {
                     if (exposureSupported) onExposureToggle()
                 },
+                onPositioned = { bounds -> sunCenterX = bounds.left + bounds.width / 2f },
             )
             ToolIcon(
                 icon = "user-circle-bold-duotone",
@@ -1132,18 +1216,35 @@ private fun CameraToolsBar(
         }
 
         // Full horizontal slider bubble — must be unbounded or the 44dp parent
-        // squeezes it into a tiny square (what the user was seeing).
-        if (showExposure && exposureSupported && exposureMax > exposureMin) {
+        // squeezes it into a tiny square (what the user was seeing). Its
+        // tail is pinned under the real sun-icon x position (clamped so it
+        // never runs off either edge of the screen), and it now fades +
+        // scales in/out instead of popping.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showExposure && exposureSupported && exposureMax > exposureMin,
+            enter = androidx.compose.animation.fadeIn(tween(140)) +
+                androidx.compose.animation.scaleIn(initialScale = 0.9f, animationSpec = tween(140)),
+            exit = androidx.compose.animation.fadeOut(tween(110)) +
+                androidx.compose.animation.scaleOut(targetScale = 0.9f, animationSpec = tween(110)),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .offset(y = (-56).dp)
+                .wrapContentSize(unbounded = true, align = Alignment.BottomStart),
+        ) {
+            val bubbleHalfWidthPx = with(density) { 120.dp.toPx() } // half of the 240dp bubble
+            val clampedCenter = sunCenterX.coerceIn(
+                bubbleHalfWidthPx,
+                (barWidthPx - bubbleHalfWidthPx).coerceAtLeast(bubbleHalfWidthPx),
+            )
+            val tailOffsetPx = sunCenterX - clampedCenter
             ExposureBubble(
                 index = exposureIndex,
                 min = exposureMin,
                 max = exposureMax,
                 accent = accent,
                 onChange = onExposureChange,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(y = (-56).dp)
-                    .wrapContentSize(unbounded = true, align = Alignment.BottomCenter),
+                tailOffset = with(density) { tailOffsetPx.toDp() },
+                modifier = Modifier.offset(x = with(density) { (clampedCenter - bubbleHalfWidthPx).toDp() }),
             )
         }
     }
@@ -1157,8 +1258,16 @@ private fun ToolIcon(
     onClick: () -> Unit,
     badge: String? = null,
     dimmed: Boolean = false,
+    onPositioned: ((Rect) -> Unit)? = null,
 ) {
-    NoFeedbackButton(onClick = onClick) {
+    NoFeedbackButton(
+        onClick = onClick,
+        modifier = if (onPositioned != null) {
+            Modifier.onGloballyPositioned { onPositioned(it.boundsInParent()) }
+        } else {
+            Modifier
+        },
+    ) {
         Box(
             Modifier.size(44.dp),
             contentAlignment = Alignment.Center,
@@ -1199,6 +1308,7 @@ private fun ExposureBubble(
     accent: Color,
     onChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    tailOffset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val range = (max - min).coerceAtLeast(1)
     var visualFrac by remember(min, max) {
@@ -1289,9 +1399,13 @@ private fun ExposureBubble(
                 modifier = Modifier.width(28.dp),
             )
         }
-        // Tail pointing down to the sun icon
+        // Tail pointing down to the sun icon — offset so its apex lands
+        // under the icon's real x position, not just the bubble's center.
         androidx.compose.foundation.Canvas(
-            Modifier.size(width = 16.dp, height = 8.dp),
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .offset(x = tailOffset)
+                .size(width = 16.dp, height = 8.dp),
         ) {
             val p = androidx.compose.ui.graphics.Path().apply {
                 moveTo(0f, 0f)

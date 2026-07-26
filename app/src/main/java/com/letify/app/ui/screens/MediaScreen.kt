@@ -87,7 +87,9 @@ import com.letify.app.ui.state.Dates
 import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.state.MediaItem
 import com.letify.app.ui.theme.Letify
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -107,7 +109,16 @@ fun MediaScreen(
     val density = LocalDensity.current
     val config = LocalConfiguration.current
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { state.reloadMedia(context.filesDir) }
+    // Only the very first visit touches disk; reloadMedia() previously ran
+    // here unconditionally, which is why moments looked like they reloaded
+    // from scratch every time you came back to this screen (see
+    // AppState.mediaLoaded). The scan itself is also moved off the main
+    // thread so that first load can't stutter the open animation either.
+    LaunchedEffect(Unit) {
+        if (!state.mediaLoaded) {
+            withContext(Dispatchers.IO) { state.reloadMedia(context.filesDir) }
+        }
+    }
 
     var selectedId by remember { mutableStateOf<String?>(null) }
     var sourceBounds by remember { mutableStateOf<Rect?>(null) }

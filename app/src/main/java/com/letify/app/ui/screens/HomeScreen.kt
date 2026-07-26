@@ -170,8 +170,18 @@ fun HomeScreen(
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(top = 6.dp, bottom = 24.dp),
     ) {
-        // Header → profile
-        NoFeedbackButton(onClick = onOpenProfile, modifier = Modifier.fillMaxWidth()) {
+        // Header → profile. feedback = false: this button spans the whole row
+        // (avatar + name + date on the right) so onOpenProfile also fires from
+        // a tap on the date — that's intentional (bigger target). But the
+        // default press "squat" (see NoFeedbackButton) scales the WHOLE row,
+        // including the date, which reads as the date itself getting pressed
+        // even though only the avatar/name were tapped. Turning feedback off
+        // keeps the tap target and navigation, just drops the visual squat.
+        NoFeedbackButton(
+            onClick = onOpenProfile,
+            modifier = Modifier.fillMaxWidth(),
+            feedback = false,
+        ) {
             Row(
                 Modifier
                     .fillMaxWidth()

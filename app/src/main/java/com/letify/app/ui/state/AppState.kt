@@ -449,6 +449,20 @@ class AppState(
     // available (MediaScreen / app start) to hydrate the list from disk.
     val mediaItems: SnapshotStateList<MediaItem> = mutableStateListOf()
 
+    // Was the media/ directory already scanned once this process lifetime?
+    // MediaScreen used to call reloadMedia() unconditionally from
+    // LaunchedEffect(Unit) on EVERY visit — and LaunchedEffect(Unit) re-runs
+    // each time the screen re-enters composition (i.e. every time the user
+    // navigates back to "Моменты"). That re-scanned the whole media/
+    // directory from disk and rebuilt mediaItems from scratch each time,
+    // which is what looked like "moments reload every time you come back".
+    // Capture (addMedia) and delete (removeMedia) already keep mediaItems
+    // in sync in-memory as they happen, so a full disk rescan is only ever
+    // needed ONCE per process — right after a cold start. MediaScreen now
+    // calls [ensureMediaLoaded] instead, which is a no-op after the first
+    // successful load.
+    var mediaLoaded: Boolean = false
+
     private val mediaNotes: MutableMap<String, String> =
         (dataStore?.loadMediaNotes() ?: emptyMap()).toMutableMap()
 
@@ -463,7 +477,19 @@ class AppState(
     }
 
 
+    /**
+     * Loads media from disk the first time it's called, then does nothing
+     * on every later call — the cache MediaScreen was missing. Safe to call
+     * from every MediaScreen composition; only the first one actually
+     * touches disk.
+     */
+    fun ensureMediaLoaded(filesDir: java.io.File) {
+        if (mediaLoaded) return
+        reloadMedia(filesDir)
+    }
+
     fun reloadMedia(filesDir: java.io.File) {
+        mediaLoaded = true
         val dir = java.io.File(filesDir, "media")
         val loaded = if (dir.isDirectory) {
             dir.listFiles()
