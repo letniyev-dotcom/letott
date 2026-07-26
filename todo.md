@@ -241,6 +241,23 @@
 - FIX: overlapping Активити tasks vanished. ScheduleList showed only the FIRST live task (`firstOrNull{Live}`) — any other task whose time window covered "now" was in neither live/upcoming/past buckets and was silently dropped. Looked like "task with activity won't create" / "can't have several activity tasks at the same time".
 - Fix: `live = sorted.filter{Live}` + `live.forEach{TaskCard}` in PlanScreen.kt → all concurrent tasks render.
 
+## r229-profile-back-navigation (versionCode 229)
+- **Со свайпа/кнопкой back нельзя выйти с Profile (и Plan) на Home:** причина —
+  у самого таб-пейджера (Home/Profile/Plan) вообще не было зарегистрировано
+  `BackHandler`/`PredictiveBackHandler`. У всех оверлеев (Appearance, Goals,
+  шторки и т.д.) он есть — каждый регистрирует свой, поэтому там свайп-назад и
+  системная кнопка работают. А для самого стека табов такого хендлера не
+  было НИ НА ОДНОМ табе — то есть баг не «свайп на Profile не работает», а
+  «свайп с таб-пейджера не работал вообще, просто на Home это не так
+  заметно, потому что там и так некуда возвращаться».
+- ФИКС: добавлен один `BackHandler` на уровне `LetifyApp`, `enabled` только
+  когда стек оверлеев пуст (иначе перехватывает хендлер конкретного оверлея —
+  не мешаем ему) и текущий таб не Home. Срабатывает через тот же `changeTab`,
+  что и кнопка "назад" в `ProfileScreen`/`PlanScreen` — значит подчиняется той
+  же r228-дебаунс-логике (свайп-назад посреди ещё не доигравшего перелёта
+  не прервёт анимацию).
+- versionCode 228→229.
+
 ## r228-profile-flight-rapid-tap (versionCode 228)
 - **«Если быстро тыкать открытие/закрытие — всё мигает, дёргается»:** причина —
   прерывание полёта на середине. `LaunchedEffect(current)` перезапускается

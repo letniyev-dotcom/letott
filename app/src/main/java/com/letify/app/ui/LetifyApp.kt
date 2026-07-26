@@ -1,5 +1,6 @@
 package com.letify.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -344,6 +345,20 @@ fun LetifyApp() {
     // 320ms is short enough that an extra tap in that window reads as
     // "ignored", not as the app being unresponsive.
     val changeTab: (Tab) -> Unit = { tab -> if (tabSettledState.value) state.currentTab = tab }
+
+    // Every overlay/sheet (Appearance, Goals, bottom sheets, ...) registers
+    // its own BackHandler/PredictiveBackHandler, so swipe-back and the
+    // hardware/gesture back button work there. The Home/Profile/Plan tab
+    // pager itself never registered one — that's the whole bug: it's not
+    // that back was broken on Profile specifically, it simply never existed
+    // for the tab stack at all, on any tab. `enabled` is false on Home (there
+    // is nothing to go "back" to) and false while any overlay is open (its
+    // own handler owns back then — this one would otherwise fight it for the
+    // same gesture). Routed through `changeTab` so a back-swipe while a
+    // flight is still mid-animation gets the same debounce as a tap.
+    BackHandler(enabled = overlayStack.isEmpty() && state.currentTab != Tab.Home) {
+        changeTab(Tab.Home)
+    }
 
     // Single identity for avatar+name (Home ⇄ Profile).
     // There is exactly ONE composable that paints them — at the root.

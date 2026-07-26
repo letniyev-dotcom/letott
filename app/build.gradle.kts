@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 228
-        versionName = "r228-profile-flight-rapid-tap"
+        versionCode = 229
+        versionName = "r229-profile-back-navigation"
         vectorDrawables { useSupportLibrary = true }
     }
 
