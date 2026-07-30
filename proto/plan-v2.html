@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Экран плана v2 — прототип</title>
+<style>
+  :root {
+    --bg: #000;
+    --container: #181818;
+    --container-2: #1f1f22;
+    --divider: rgba(255,255,255,0.07);
+    --track: rgba(255,255,255,0.10);
+    --text: #f4f4f5;
+    --muted: #8a8a92;
+    --muted-2: #5b5b62;
+    --accent: #B084F5;
+    --tile-violet: #B286FF;
+    --tile-blue: #3FA8F5;
+    --tile-orange: #FFA63D;
+    --tile-pink: #FF6E97;
+    --tile-green: #5BD89A;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: #050507;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Helvetica Neue", sans-serif;
+    margin: 0; padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    padding: 36px 24px 72px;
+    background:
+      radial-gradient(900px 600px at 10% -10%, rgba(176,132,245,0.10), transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, rgba(90,167,255,0.08), transparent 60%),
+      #050507;
+  }
+  h1 { text-align: center; font-weight: 700; font-size: 24px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .subtitle {
+    text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 36px;
+    max-width: 760px; margin-left: auto; margin-right: auto; line-height: 1.6;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 28px;
+    max-width: 1500px;
+    margin: 0 auto;
+  }
+  .group-label {
+    text-align: center; font-weight: 600; font-size: 13px; letter-spacing: 0.04em;
+    color: var(--muted); text-transform: uppercase; margin: 0 0 14px;
+  }
+  .phone {
+    width: 100%; max-width: 360px; margin: 0 auto; aspect-ratio: 360/780;
+    background: var(--bg); border-radius: 38px; border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7), 0 0 0 6px #0a0a0c;
+    position: relative; overflow: hidden; padding: 12px 14px 16px;
+    display: flex; flex-direction: column;
+  }
+  .phone::before {
+    content: ""; position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 110px; height: 28px; border-radius: 16px; background: #050507; z-index: 50;
+  }
+  .status-bar {
+    height: 28px; display: flex; justify-content: space-between; align-items: center;
+    padding: 0 14px; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px;
+  }
+  .status-bar .icons { display: flex; gap: 5px; opacity: 0.9; align-items: center; }
+
+  .header {
+    display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 14px;
+  }
+  .header-title { font-weight: 800; font-size: 26px; letter-spacing: -0.02em; }
+  .header-add {
+    width: 34px; height: 34px; border-radius: 999px; background: var(--container);
+    display: flex; align-items: center; justify-content: center; color: var(--text);
+  }
+
+  .day-strip { display: flex; gap: 8px; padding: 0 4px 18px; overflow: hidden; }
+  .day-pill {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 8px 0; border-radius: 14px; color: var(--muted); font-size: 12px; font-weight: 600;
+  }
+  .day-pill .num { font-size: 15px; font-weight: 700; color: var(--text); }
+  .day-pill.active { background: var(--accent); color: #1a0f2e; }
+  .day-pill.active .num { color: #1a0f2e; }
+
+  .section-label {
+    font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+    font-weight: 700; margin: 18px 4px 8px;
+  }
+  .section-label:first-of-type { margin-top: 4px; }
+
+  /* ── LIVE task — the ONLY one with a container/card ── */
+  .task-live {
+    position: relative;
+    background: var(--container);
+    border-radius: 22px;
+    padding: 14px 15px;
+    margin: 0 0 4px;
+    display: flex; align-items: center; gap: 12px;
+    overflow: hidden;
+  }
+  .task-live .glow {
+    position: absolute; inset: 0; border-radius: 22px;
+    box-shadow: inset 0 0 0 1.5px var(--tile-violet-a, rgba(178,134,255,0.35));
+    pointer-events: none;
+  }
+  .task-icon {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; flex: 0 0 26px;
+  }
+  .task-icon svg { width: 24px; height: 24px; }
+  .task-name { font-size: 16px; font-weight: 600; color: var(--text); }
+  .task-meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .task-meta.accent { color: var(--tile-violet); font-weight: 600; }
+  .task-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    background: rgba(178,134,255,0.16); color: var(--tile-violet);
+    display: inline-flex; align-items: center; gap: 4px; margin-bottom: 3px;
+  }
+  .task-badge::before {
+    content: ""; width: 5px; height: 5px; border-radius: 999px; background: var(--tile-violet);
+  }
+
+  .ring {
+    width: 30px; height: 30px; border-radius: 999px; flex: 0 0 30px;
+    border: 2.5px solid var(--tile-violet);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ring.empty { border-color: rgba(255,255,255,0.18); }
+  .ring.done { background: var(--tile-violet); }
+  .ring.done svg { width: 15px; height: 15px; }
+  .ring.expired-empty { border-color: var(--muted-2); }
+
+  /* ── Everything else: flat row, NO container ── */
+  .task-flat {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 6px;
+  }
+  .task-flat .task-name { font-size: 15.5px; font-weight: 500; }
+  .task-flat.past .task-name { color: var(--muted); font-weight: 500; }
+  .task-flat.past .task-icon { opacity: 0.5; }
+  .task-flat.expired .task-name { color: var(--text); }
+  .task-flat.expired .task-meta { color: var(--tile-pink); font-weight: 600; }
+
+  .flat-divider { height: 0.7px; background: var(--divider); margin: 0 6px 0 44px; }
+
+  .annot {
+    color: var(--muted); font-size: 12.5px; text-align: center; line-height: 1.7;
+    max-width: 320px; margin: 16px auto 0;
+  }
+  .annot b { color: var(--text); font-weight: 600; }
+
+  .legend {
+    max-width: 900px; margin: 60px auto 0; background: var(--container);
+    border-radius: 20px; padding: 22px 26px;
+  }
+  .legend h2 { font-size: 15px; margin: 0 0 14px; }
+  .legend ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .legend li { font-size: 13.5px; color: var(--muted); line-height: 1.6; display: flex; gap: 10px; }
+  .legend li b { color: var(--text); font-weight: 600; min-width: 150px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<h1>План — новая логика карточек</h1>
+<p class="subtitle">
+  Контейнер (заливка-«таблетка») остаётся только у задачи, которая идёт <b>прямо сейчас</b> — она одна визуально выделена.
+  Всё остальное — прошедшее и предстоящее — плоские строки без фона, разделённые тонкой линией, как в списках Профиля.
+  Время у текущей задачи — это просто акцент («идёт сейчас»), а не таймер до автовыполнения.
+</p>
+
+<div class="row">
+
+  <div>
+    <p class="group-label">① Обычный день — как сейчас, без активной задачи между делами</p>
+    <div class="phone">
+      <div class="status-bar">
+        <span>09:41</span>
+        <span class="icons">
+          <svg width="16" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3" fill="none" stroke="currentColor"/><rect x="22" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/></svg>
+        </span>
+      </div>
+      <div class="header">
+        <div class="header-title">План</div>
+        <div class="header-add">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+      </div>
+      <div class="day-strip">
+        <div class="day-pill">Пн<span class="num">27</span></div>
+        <div class="day-pill">Вт<span class="num">28</span></div>
+        <div class="day-pill">Ср<span class="num">29</span></div>
+        <div class="day-pill active">Чт<span class="num">30</span></div>
+        <div class="day-pill">Пт<span class="num">31</span></div>
+        <div class="day-pill">Сб<span class="num">1</span></div>
+      </div>
+
+      <div class="section-label">Прошедшие</div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Зарядка</div>
+          <div class="task-meta">07:00 · 20 мин · Выполнено</div>
+        </div>
+      </div>
+      <div class="flat-divider"></div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Завтрак</div>
+          <div class="task-meta">08:00 · 30 мин · Выполнено</div>
+        </div>
+      </div>
+
+      <div class="section-label">Предстоящие</div>
+      <div class="task-flat">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#3FA8F5"><circle cx="12" cy="12" r="9" opacity="0.4"/><path d="M12 7v5l3 2" fill="none" stroke="#3FA8F5" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        <div>
+          <div class="task-name">Работа над проектом</div>
+          <div class="task-meta">11:00 · 2 ч</div>
+        </div>
+      </div>
+      <div class="flat-divider"></div>
+      <div class="task-flat">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#FFA63D"><rect x="4" y="4" width="16" height="16" rx="4" opacity="0.4"/><path d="M8 12h8M8 16h5" stroke="#FFA63D" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div>
+          <div class="task-name">Обед</div>
+          <div class="task-meta">13:30 · 40 мин</div>
+        </div>
+      </div>
+      <div class="flat-divider"></div>
+      <div class="task-flat">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#FF6E97"><circle cx="12" cy="12" r="9" opacity="0.4"/><path d="M8 12h8" stroke="#FF6E97" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        <div>
+          <div class="task-name">Звонок с командой</div>
+          <div class="task-meta">15:00 · 45 мин</div>
+        </div>
+      </div>
+    </div>
+    <p class="annot">
+      Прошедшие и предстоящие — <b>обычный список</b>, без карточек: иконка, название, время, тонкий разделитель.
+      Ничего не «висит» в контейнерах зря — фон нужен только там, где реально что-то происходит.
+    </p>
+  </div>
+
+  <div>
+    <p class="group-label">② Идёт задача — единственная с контейнером</p>
+    <div class="phone">
+      <div class="status-bar">
+        <span>11:20</span>
+        <span class="icons">
+          <svg width="16" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3" fill="none" stroke="currentColor"/><rect x="22" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/></svg>
+        </span>
+      </div>
+      <div class="header">
+        <div class="header-title">План</div>
+        <div class="header-add">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+      </div>
+      <div class="day-strip">
+        <div class="day-pill">Пн<span class="num">27</span></div>
+        <div class="day-pill">Вт<span class="num">28</span></div>
+        <div class="day-pill">Ср<span class="num">29</span></div>
+        <div class="day-pill active">Чт<span class="num">30</span></div>
+        <div class="day-pill">Пт<span class="num">31</span></div>
+        <div class="day-pill">Сб<span class="num">1</span></div>
+      </div>
+
+      <div class="section-label">Прошедшие</div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Зарядка</div>
+          <div class="task-meta">07:00 · 20 мин · Выполнено</div>
+        </div>
+      </div>
+
+      <div class="section-label">Сейчас</div>
+      <div class="task-live">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#B286FF"><rect x="4" y="4" width="16" height="16" rx="4" opacity="0.4"/><path d="M8 12h8M8 16h5" stroke="#B286FF" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div style="flex:1">
+          <div class="task-badge">Идёт сейчас</div>
+          <div class="task-name">Работа над проектом</div>
+          <div class="task-meta">11:00–13:00 · осталось 1 ч 40 мин</div>
+        </div>
+        <div class="ring empty"></div>
+      </div>
+
+      <div class="section-label">Предстоящие</div>
+      <div class="task-flat">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#FFA63D"><rect x="4" y="4" width="16" height="16" rx="4" opacity="0.4"/><path d="M8 12h8M8 16h5" stroke="#FFA63D" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div>
+          <div class="task-name">Обед</div>
+          <div class="task-meta">13:30 · 40 мин</div>
+        </div>
+      </div>
+      <div class="flat-divider"></div>
+      <div class="task-flat">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#FF6E97"><circle cx="12" cy="12" r="9" opacity="0.4"/><path d="M8 12h8" stroke="#FF6E97" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        <div>
+          <div class="task-name">Звонок с командой</div>
+          <div class="task-meta">15:00 · 45 мин</div>
+        </div>
+      </div>
+    </div>
+    <p class="annot">
+      Время («осталось 1 ч 40 мин») здесь — <b>просто акцент</b>, цветной текст + бейдж «Идёт сейчас».
+      Кружок справа <b>пустой</b> — он ничего не запускает автоматически, ждёт тапа.
+    </p>
+  </div>
+
+  <div>
+    <p class="group-label">③ Время вышло, но задача ещё не отмечена</p>
+    <div class="phone">
+      <div class="status-bar">
+        <span>13:05</span>
+        <span class="icons">
+          <svg width="16" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3" fill="none" stroke="currentColor"/><rect x="22" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/></svg>
+        </span>
+      </div>
+      <div class="header">
+        <div class="header-title">План</div>
+        <div class="header-add">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+      </div>
+      <div class="day-strip">
+        <div class="day-pill">Пн<span class="num">27</span></div>
+        <div class="day-pill">Вт<span class="num">28</span></div>
+        <div class="day-pill">Ср<span class="num">29</span></div>
+        <div class="day-pill active">Чт<span class="num">30</span></div>
+        <div class="day-pill">Пт<span class="num">31</span></div>
+        <div class="day-pill">Сб<span class="num">1</span></div>
+      </div>
+
+      <div class="section-label">Прошедшие</div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Зарядка</div>
+          <div class="task-meta">07:00 · 20 мин · Выполнено</div>
+        </div>
+      </div>
+      <div class="flat-divider"></div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Работа над проектом</div>
+          <div class="task-meta">11:00 · 2 ч · Выполнено</div>
+        </div>
+      </div>
+
+      <div class="section-label">Требуют отметки</div>
+      <div class="task-flat expired">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#FFA63D"><rect x="4" y="4" width="16" height="16" rx="4" opacity="0.4"/><path d="M8 12h8M8 16h5" stroke="#FFA63D" stroke-width="2" stroke-linecap="round"/></svg></div>
+        <div style="flex:1">
+          <div class="task-name">Обед</div>
+          <div class="task-meta">13:30 · время вышло</div>
+        </div>
+        <div class="ring expired-empty"></div>
+      </div>
+
+      <div class="section-label">Предстоящие</div>
+      <div class="task-flat">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#FF6E97"><circle cx="12" cy="12" r="9" opacity="0.4"/><path d="M8 12h8" stroke="#FF6E97" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        <div>
+          <div class="task-name">Звонок с командой</div>
+          <div class="task-meta">15:00 · 45 мин</div>
+        </div>
+      </div>
+    </div>
+    <p class="annot">
+      Задача <b>не улетает</b> сама в «Выполнено» — раз время вышло, а отметки нет, она попадает в
+      «Требуют отметки»: <b>плоская строка</b>, розовый акцент времени, кружок по-прежнему пустой и ждёт тапа.
+    </p>
+  </div>
+
+  <div>
+    <p class="group-label">④ Тап по кружку — подтверждение вручную</p>
+    <div class="phone">
+      <div class="status-bar">
+        <span>13:06</span>
+        <span class="icons">
+          <svg width="16" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3" fill="none" stroke="currentColor"/><rect x="22" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/></svg>
+        </span>
+      </div>
+      <div class="header">
+        <div class="header-title">План</div>
+        <div class="header-add">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
+      </div>
+      <div class="day-strip">
+        <div class="day-pill">Пн<span class="num">27</span></div>
+        <div class="day-pill">Вт<span class="num">28</span></div>
+        <div class="day-pill">Ср<span class="num">29</span></div>
+        <div class="day-pill active">Чт<span class="num">30</span></div>
+        <div class="day-pill">Пт<span class="num">31</span></div>
+        <div class="day-pill">Сб<span class="num">1</span></div>
+      </div>
+
+      <div class="section-label">Прошедшие</div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Зарядка</div>
+          <div class="task-meta">07:00 · 20 мин · Выполнено</div>
+        </div>
+      </div>
+      <div class="flat-divider"></div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Работа над проектом</div>
+          <div class="task-meta">11:00 · 2 ч · Выполнено</div>
+        </div>
+      </div>
+      <div class="flat-divider"></div>
+      <div class="task-flat past">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8a8a92" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4" stroke-width="2.2"/></svg></div>
+        <div>
+          <div class="task-name">Обед</div>
+          <div class="task-meta">13:30 · Выполнено (отмечено вручную)</div>
+        </div>
+      </div>
+
+      <div class="section-label">Предстоящие</div>
+      <div class="task-flat">
+        <div class="task-icon"><svg viewBox="0 0 24 24" fill="#FF6E97"><circle cx="12" cy="12" r="9" opacity="0.4"/><path d="M8 12h8" stroke="#FF6E97" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        <div>
+          <div class="task-name">Звонок с командой</div>
+          <div class="task-meta">15:00 · 45 мин</div>
+        </div>
+      </div>
+    </div>
+    <p class="annot">
+      После тапа задача сразу уходит в «Прошедшие» с пометкой, что отметили вручную — статистика/стрик
+      честно отражает, что подтвердил именно ты, а не таймер.
+    </p>
+  </div>
+
+</div>
+
+<div class="legend">
+  <h2>Что меняется по сути</h2>
+  <ul>
+    <li><b>Контейнер</b> — карточка (заливка «таблеткой») теперь только у задачи в статусе «сейчас». Прошедшие и предстоящие — плоские строки с тонким разделителем, без фона.</li>
+    <li><b>Автовыполнение убрано</b> — когда время задачи заканчивается, она больше не помечается «Выполнено» сама. Она переходит в отдельную секцию «Требуют отметки» и ждёт тапа по кружку.</li>
+    <li><b>Кружок справа</b> — есть только у «сейчас» и у «требует отметки»; у прошедших — статичная галочка, у предстоящих — нет вообще (нечего подтверждать заранее).</li>
+    <li><b>Время как акцент</b> — цветной текст + бейдж «Идёт сейчас» на активной задаче показывают, что происходит прямо сейчас, но не управляют статусом сами по себе.</li>
+  </ul>
+</div>
+
+<p style="text-align:center; color: var(--muted); font-size: 12px; margin-top: 50px;">
+  © Letify — прототип обновлённого экрана «План» · 30.07.2026
+</p>
+
+</body>
+</html>
