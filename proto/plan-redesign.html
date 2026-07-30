@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>План — редизайн (прототип)</title>
+<style>
+  :root {
+    --bg: #000;
+    --container: #181818;
+    --container-2: #1f1f22;
+    --divider: rgba(255,255,255,0.06);
+    --text: #f4f4f5;
+    --muted: #8a8a92;
+    --muted-2: #5b5b62;
+    --accent: #B084F5;
+    --accent-soft: rgba(176,132,245,0.20);
+    --purple: #B084F5;
+    --blue: #5AA7FF;
+    --mint: #7CD992;
+    --orange: #FF8C5A;
+    --pink: #FF6B9D;
+    --yellow: #FFD166;
+    --red: #F06262;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: #050507;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Helvetica Neue", sans-serif;
+    margin: 0; padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    padding: 36px 24px 90px;
+    background:
+      radial-gradient(900px 600px at 10% -10%, rgba(176,132,245,0.10), transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, rgba(90,167,255,0.08), transparent 60%),
+      #050507;
+  }
+  h1 { text-align: center; font-weight: 700; font-size: 24px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .subtitle {
+    text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 40px;
+    max-width: 760px; margin-left: auto; margin-right: auto; line-height: 1.6;
+  }
+  .subtitle b { color: #cfc4ea; font-weight: 600; }
+  .row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 30px;
+    max-width: 1900px;
+    margin: 0 auto 64px;
+    align-items: start;
+  }
+  .group-label {
+    text-align: center; font-weight: 600; font-size: 13px; letter-spacing: 0.04em;
+    color: var(--muted); text-transform: uppercase; margin: 0 0 14px;
+  }
+  .annot {
+    text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 16px;
+    max-width: 340px; margin-left: auto; margin-right: auto; line-height: 1.65;
+  }
+  .annot b { color: #cfc4ea; font-weight: 600; }
+
+  /* ---------- Phone frame ---------- */
+  .phone {
+    width: 100%; max-width: 360px; margin: 0 auto; aspect-ratio: 360 / 780;
+    background: var(--bg); border-radius: 38px; border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7), 0 0 0 6px #0a0a0c;
+    position: relative; overflow: hidden; padding: 12px 14px 16px;
+    display: flex; flex-direction: column;
+  }
+  .phone::before {
+    content: ""; position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 110px; height: 28px; border-radius: 16px; background: #050507; z-index: 50;
+  }
+  .status-bar {
+    height: 28px; display: flex; justify-content: space-between; align-items: center;
+    padding: 0 14px; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px;
+    flex: 0 0 auto;
+  }
+  .status-bar .icons { display: flex; gap: 5px; opacity: 0.9; align-items: center; }
+  .scroll { flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* ---------- Plan header ---------- */
+  .plan-header {
+    display: flex; align-items: center; padding: 6px 4px 10px; flex: 0 0 auto;
+  }
+  .plan-title { font-weight: 800; font-size: 26px; letter-spacing: -0.02em; flex: 1; }
+  .add-btn {
+    width: 34px; height: 34px; border-radius: 999px; background: var(--container);
+    display: flex; align-items: center; justify-content: center; color: var(--accent);
+  }
+
+  /* ---------- Date strip ---------- */
+  .date-strip {
+    display: flex; gap: 8px; overflow-x: auto; padding: 2px 4px 14px; flex: 0 0 auto;
+    scrollbar-width: none;
+  }
+  .date-strip::-webkit-scrollbar { display: none; }
+  .date-chip {
+    flex: 0 0 auto; width: 46px; padding: 8px 0 9px; border-radius: 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: var(--container); color: var(--muted);
+  }
+  .date-chip .dow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; opacity: 0.85; }
+  .date-chip .num { font-size: 16px; font-weight: 700; color: var(--text); }
+  .date-chip.active { background: var(--accent); color: #1a0f2e; }
+  .date-chip.active .dow { color: #1a0f2e; opacity: 0.75; }
+  .date-chip.active .num { color: #1a0f2e; }
+  .date-chip .dot { width: 4px; height: 4px; border-radius: 999px; background: var(--muted-2); margin-top: 1px; }
+  .date-chip.active .dot { background: #1a0f2e; opacity: 0.5; }
+  .date-chip.has-tasks .dot { background: var(--purple); }
+
+  /* ---------- Habits: redesigned list with day-squares ---------- */
+  .section-label {
+    font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+    font-weight: 600; margin: 4px 6px 9px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .section-label .see-all { color: var(--accent); text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; }
+  .habits-block { flex: 0 0 auto; margin-bottom: 6px; }
+  .habit-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 6px;
+  }
+  .habit-row .hicon {
+    width: 34px; height: 34px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+    flex: 0 0 34px;
+  }
+  .habit-row .hname { flex: 1; min-width: 0; }
+  .habit-row .hname .n { font-size: 14.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .habit-row .hname .s { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .week-squares { display: flex; gap: 4px; flex: 0 0 auto; }
+  .sq { width: 15px; height: 15px; border-radius: 5px; position: relative; }
+  .sq.future { border: 1.5px solid var(--divider); }
+  .sq.miss { border: 1.5px solid rgba(255,255,255,0.16); }
+  .sq.today { box-shadow: 0 0 0 1.5px var(--text) inset, 0 0 0 3px var(--bg); border: 1.5px solid rgba(255,255,255,0.16); }
+  .sq.today.filled { box-shadow: 0 0 0 1.5px var(--bg) inset, 0 0 0 3px var(--text); }
+  .habits-divider { height: 1px; background: var(--divider); margin: 2px 6px; }
+
+  /* ---------- Task list ---------- */
+  .tasks-scroll { flex: 1 1 auto; overflow-y: auto; scrollbar-width: none; padding-bottom: 8px; }
+  .tasks-scroll::-webkit-scrollbar { display: none; }
+  .task-card {
+    border-radius: 22px; background: var(--container); padding: 13px 14px; margin: 4px 0 10px;
+    display: flex; align-items: center; gap: 12px; position: relative; overflow: hidden;
+  }
+  .task-card .fill {
+    position: absolute; inset: 0; width: 44%; background: var(--purple); opacity: 0.20; z-index: 0;
+  }
+  .task-card > * { position: relative; z-index: 1; }
+  .task-row {
+    display: flex; align-items: center; gap: 12px; padding: 9px 6px; margin: 0;
+  }
+  .ticon { width: 24px; height: 24px; flex: 0 0 24px; display: flex; align-items: center; justify-content: center; }
+  .tinfo { flex: 1; min-width: 0; }
+  .tinfo .n { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tinfo .m { font-size: 12px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+  .tinfo .m .d { width: 3px; height: 3px; border-radius: 999px; background: var(--muted-2); }
+  .tring {
+    width: 26px; height: 26px; border-radius: 999px; flex: 0 0 26px; display: flex; align-items: center; justify-content: center;
+  }
+  .tring .c { width: 22px; height: 22px; border-radius: 999px; border: 2px solid rgba(255,255,255,0.5); }
+  .tring.filled .c { border: none; background: var(--purple); display: flex; align-items: center; justify-content: center; }
+  .task-row.done .n { color: var(--muted); }
+  .task-row.pending .n { color: var(--text); }
+  .badge-pending {
+    font-size: 10.5px; font-weight: 700; color: var(--yellow); background: rgba(255,209,102,0.14);
+    padding: 2px 7px; border-radius: 7px; letter-spacing: 0.01em;
+  }
+
+  /* ---------- Legend / component gallery panel ---------- */
+  .legend-panel {
+    background: #0c0c0e; border: 1px solid rgba(255,255,255,0.06); border-radius: 26px;
+    padding: 20px 18px 22px; max-width: 360px; margin: 0 auto;
+  }
+  .legend-item { margin-bottom: 18px; }
+  .legend-item:last-child { margin-bottom: 0; }
+  .legend-item .ltitle { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .legend-item .ltitle .tag {
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    padding: 2px 6px; border-radius: 6px; background: var(--container-2); color: var(--muted);
+  }
+  .legend-item .ldesc { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
+
+  /* icons helper */
+  svg { display: block; }
+</style>
+</head>
+<body>
+
+<h1>«План» — редизайн</h1>
+<div class="subtitle">
+  Три изменения: <b>только текущая задача в карточке</b>, остальные — простой строкой без подложки;
+  время задачи — это больше <b>не автовыполнение</b>, а просто акцент «сейчас идёт», отметка — вручную по кружку;
+  сверху — <b>переключатель дня</b>; привычки — список с <b>квадратиками по дням</b> вместо только вертикальных «сосудов».
+</div>
+
+<div class="row">
+
+  <!-- ============== 1. MAIN PLAN SCREEN ============== -->
+  <div>
+    <p class="group-label">① Экран «План» — новый вид</p>
+    <div class="phone">
+      <div class="status-bar">
+        <span>14:23</span>
+        <span class="icons">
+          <svg width="16" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3" fill="none" stroke="currentColor"/><rect x="22" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/></svg>
+        </span>
+      </div>
+
+      <div class="scroll">
+        <div class="plan-header">
+          <div class="plan-title">План</div>
+          <div class="add-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </div>
+        </div>
+
+        <!-- Date switcher -->
+        <div class="date-strip">
+          <div class="date-chip has-tasks"><div class="dow">Пн</div><div class="num">27</div><div class="dot"></div></div>
+          <div class="date-chip has-tasks"><div class="dow">Вт</div><div class="num">28</div><div class="dot"></div></div>
+          <div class="date-chip"><div class="dow">Ср</div><div class="num">29</div><div class="dot"></div></div>
+          <div class="date-chip active"><div class="dow">Сегодня</div><div class="num">30</div><div class="dot"></div></div>
+          <div class="date-chip has-tasks"><div class="dow">Пт</div><div class="num">31</div><div class="dot"></div></div>
+          <div class="date-chip has-tasks"><div class="dow">Сб</div><div class="num">1</div><div class="dot"></div></div>
+          <div class="date-chip"><div class="dow">Вс</div><div class="num">2</div><div class="dot"></div></div>
+        </div>
+
+        <!-- Habits — compact list w/ day-squares -->
+        <div class="habits-block">
+          <div class="section-label"><span>Привычки</span><span class="see-all">Все →</span></div>
+
+          <div class="habit-row">
+            <div class="hicon" style="background: rgba(90,167,255,0.16)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--blue)"><path d="M12 2C12 2 5 10.5 5 15.5A7 7 0 0019 15.5C19 10.5 12 2 12 2Z"/></svg>
+            </div>
+            <div class="hname"><div class="n">Вода</div><div class="s">5 дней подряд</div></div>
+            <div class="week-squares">
+              <div class="sq filled" style="background:var(--blue)"></div>
+              <div class="sq filled" style="background:var(--blue)"></div>
+              <div class="sq miss"></div>
+              <div class="sq today"></div>
+              <div class="sq future"></div>
+              <div class="sq future"></div>
+              <div class="sq future"></div>
+            </div>
+          </div>
+          <div class="habits-divider"></div>
+
+          <div class="habit-row">
+            <div class="hicon" style="background: rgba(176,132,245,0.16)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--purple)"><circle cx="12" cy="12" r="9"/></svg>
+            </div>
+            <div class="hname"><div class="n">Медитация</div><div class="s">3 дня подряд</div></div>
+            <div class="week-squares">
+              <div class="sq filled" style="background:var(--purple)"></div>
+              <div class="sq filled" style="background:var(--purple)"></div>
+              <div class="sq filled" style="background:var(--purple)"></div>
+              <div class="sq today"></div>
+              <div class="sq future"></div>
+              <div class="sq future"></div>
+              <div class="sq future"></div>
+            </div>
+          </div>
+          <div class="habits-divider"></div>
+
+          <div class="habit-row">
+            <div class="hicon" style="background: rgba(255,140,90,0.16)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--orange)"><path d="M6 4h12l-1.5 14a2 2 0 01-2 2h-5a2 2 0 01-2-2L6 4Z"/></svg>
+            </div>
+            <div class="hname"><div class="n">Без сахара</div><div class="s">Выполнено сегодня</div></div>
+            <div class="week-squares">
+              <div class="sq filled" style="background:var(--orange)"></div>
+              <div class="sq filled" style="background:var(--orange)"></div>
+              <div class="sq filled" style="background:var(--orange)"></div>
+              <div class="sq today filled" style="background:var(--orange)"></div>
+              <div class="sq future"></div>
+              <div class="sq future"></div>
+              <div class="sq future"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Task list -->
+        <div class="tasks-scroll">
+          <div class="section-label"><span>Расписание</span></div>
+
+          <!-- Done, manually -->
+          <div class="task-row done">
+            <div class="ticon"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--mint)" opacity="0.55"><path d="M13 3L4 14h6l-1 7 9-11h-6l1-7z"/></svg></div>
+            <div class="tinfo">
+              <div class="n">Растяжка</div>
+              <div class="m"><span>07:30</span><span class="d"></span><span>30 мин</span><span class="d"></span><span>Выполнено</span></div>
+            </div>
+          </div>
+
+          <!-- Done, manually -->
+          <div class="task-row done">
+            <div class="ticon"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--yellow)" opacity="0.55"><circle cx="12" cy="12" r="8"/></svg></div>
+            <div class="tinfo">
+              <div class="n">Завтрак без телефона</div>
+              <div class="m"><span>08:30</span><span class="d"></span><span>30 мин</span><span class="d"></span><span>Выполнено</span></div>
+            </div>
+          </div>
+
+          <!-- Time passed, NOT confirmed — plain row, ring still tappable -->
+          <div class="task-row pending">
+            <div class="ticon"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--blue)"><path d="M4 19.5V6a2 2 0 012-2h8.5L20 8.5V19.5a1 1 0 01-1 1H5a1 1 0 01-1-1Z"/></svg></div>
+            <div class="tinfo">
+              <div class="n">Английский</div>
+              <div class="m"><span>09:30</span><span class="d"></span><span>60 мин</span><span class="d"></span><span class="badge-pending">не отмечено</span></div>
+            </div>
+            <div class="tring"><div class="c"></div></div>
+          </div>
+
+          <!-- LIVE — the only card with container -->
+          <div class="task-card">
+            <div class="fill"></div>
+            <div class="ticon"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--purple)"><path d="M12 2a4 4 0 014 4v2a4 4 0 01-8 0V6a4 4 0 014-4Z"/><path d="M6 11v1a6 6 0 0012 0v-1M12 18v3M9 21h6" stroke="var(--purple)" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>
+            <div class="tinfo">
+              <div class="n">Тренировка</div>
+              <div class="m"><span style="color:var(--purple)">до конца 25 мин</span></div>
+            </div>
+            <div class="tring"><div class="c"></div></div>
+          </div>
+
+          <!-- Upcoming — plain, no ring -->
+          <div class="task-row">
+            <div class="ticon"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--pink)"><path d="M6.5 3h11a2 2 0 012 2v14l-7.5-4L4.5 19V5a2 2 0 012-2Z"/></svg></div>
+            <div class="tinfo">
+              <div class="n">Звонок с командой</div>
+              <div class="m"><span>16:00</span><span class="d"></span><span>60 мин</span></div>
+            </div>
+          </div>
+
+          <!-- Upcoming — plain, no ring -->
+          <div class="task-row">
+            <div class="ticon"><svg width="22" height="22" viewBox="0 0 24 24" fill="var(--mint)"><path d="M6 4h9a5 5 0 010 10H8v6H6V4Zm2 2v6h7a3 3 0 000-6H8Z"/></svg></div>
+            <div class="tinfo">
+              <div class="n">Чтение</div>
+              <div class="m"><span>19:00</span><span class="d"></span><span>30 мин</span></div>
+            </div>
+          </div>
+
+          <!-- Upcoming — plain, no ring -->
+          <div class="task-row">
+            <div class="ticon"><svg width="22" height="22" viewBox="0 0 24 24" fill="#8a8aa8"><path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5Z"/></svg></div>
+            <div class="tinfo">
+              <div class="n">Сон</div>
+              <div class="m"><span>22:00</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="annot">
+      Карточка (заливка + подложка) остаётся <b>только у текущей задачи</b>. Всё остальное — обычная строка
+      без фона: так «Расписание» перестаёт быть стопкой одинаковых плашек и видно, что сейчас реально важно.
+    </p>
+  </div>
+
+  <!-- ============== 2. LOGIC / STATES LEGEND ============== -->
+  <div>
+    <p class="group-label">② Состояния задачи — что изменилось</p>
+    <div class="legend-panel">
+
+      <div class="legend-item">
+        <div class="ltitle"><span>🟣 Идёт сейчас</span><span class="tag">карточка</span></div>
+        <div class="task-card" style="margin:0;">
+          <div class="fill"></div>
+          <div class="ticon"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--purple)"><circle cx="12" cy="12" r="9"/></svg></div>
+          <div class="tinfo"><div class="n">Тренировка</div><div class="m"><span style="color:var(--purple)">до конца 25 мин</span></div></div>
+          <div class="tring"><div class="c"></div></div>
+        </div>
+        <div class="ldesc">Заливка и время — это <b>просто акцент</b>, «эта задача сейчас в фокусе». Кружок пуст и ждёт нажатия — время само по себе больше <b>ничего не отмечает</b>.</div>
+      </div>
+
+      <div class="legend-item">
+        <div class="ltitle"><span>🟡 Время вышло, не отмечено</span><span class="tag">строка</span></div>
+        <div class="task-row pending" style="padding:9px 0;">
+          <div class="ticon"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--blue)"><circle cx="12" cy="12" r="9"/></svg></div>
+          <div class="tinfo"><div class="n">Английский</div><div class="m"><span>09:30 · 60 мин</span></div></div>
+          <div class="tring"><div class="c"></div></div>
+        </div>
+        <div class="ldesc">Раньше такая задача <b>сама</b> становилась «Выполнено». Теперь она просто теряет акцент и переходит в обычный вид — но кружок остаётся активным, чтобы отметить её вручную, хоть сразу, хоть позже.</div>
+      </div>
+
+      <div class="legend-item">
+        <div class="ltitle"><span>⚪️ Выполнено вручную</span><span class="tag">строка, приглушена</span></div>
+        <div class="task-row done" style="padding:9px 0;">
+          <div class="ticon"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--mint)" opacity="0.55"><circle cx="12" cy="12" r="9"/></svg></div>
+          <div class="tinfo"><div class="n">Растяжка</div><div class="m"><span>07:30 · Выполнено</span></div></div>
+          <div class="tring filled"><div class="c"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1a0f2e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></div></div>
+        </div>
+        <div class="ldesc">Только нажатие на кружок красит его и приглушает текст. Это единственный способ пометить задачу выполненной.</div>
+      </div>
+
+      <div class="legend-item">
+        <div class="ltitle"><span>◻️ Предстоящая</span><span class="tag">строка, без кружка</span></div>
+        <div class="task-row" style="padding:9px 0;">
+          <div class="ticon"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--pink)"><circle cx="12" cy="12" r="9"/></svg></div>
+          <div class="tinfo"><div class="n">Звонок с командой</div><div class="m"><span>16:00 · 60 мин</span></div></div>
+        </div>
+        <div class="ldesc">Как и сейчас — без кружка: рано отмечать то, что ещё не наступило.</div>
+      </div>
+
+    </div>
+    <p class="annot">
+      Итог: <b>время ≠ выполнение</b>. Время только подсвечивает «что сейчас», а факт выполнения — всегда
+      осознанное действие пользователя.
+    </p>
+  </div>
+
+</div>
+
+<div class="row" style="grid-template-columns: repeat(auto-fit, minmax(340px, 480px)); justify-content: center;">
+
+  <!-- ============== 3. HABIT DETAIL — MONTH GRID ============== -->
+  <div>
+    <p class="group-label">③ Бонус: открыть привычку → месяц квадратиками</p>
+    <div class="phone">
+      <div class="status-bar">
+        <span>14:23</span>
+        <span class="icons">
+          <svg width="16" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="5" y="5" width="3" height="7" rx="0.5"/><rect x="10" y="2" width="3" height="10" rx="0.5"/><rect x="15" y="0" width="3" height="12" rx="0.5"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3" fill="none" stroke="currentColor"/><rect x="22" y="3.5" width="2" height="5" rx="1" fill="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/></svg>
+        </span>
+      </div>
+      <div class="scroll" style="padding: 6px 4px;">
+        <div class="plan-header" style="padding-bottom: 2px;">
+          <div class="add-btn" style="background:none; color:var(--text);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </div>
+          <div class="plan-title" style="font-size:19px; text-align:center;">Медитация</div>
+          <div style="width:34px"></div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:14px; padding: 14px 10px 18px;">
+          <div class="hicon" style="width:46px;height:46px;border-radius:14px;background:rgba(176,132,245,0.16)">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--purple)"><circle cx="12" cy="12" r="9"/></svg>
+          </div>
+          <div>
+            <div style="font-size:22px; font-weight:800;">18 дней</div>
+            <div style="font-size:12.5px; color:var(--muted); margin-top:2px;">лучшая серия — 24 дня</div>
+          </div>
+        </div>
+
+        <div class="section-label"><span>Июль</span></div>
+        <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap: 6px; padding: 0 8px;">
+          <!-- 31 day grid for July, purple = done, outline = miss, faded = future -->
+          <script>
+            document.write('');
+          </script>
+        </div>
+        <div id="month-grid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap: 7px; padding: 0 8px;"></div>
+        <script>
+          (function () {
+            var grid = document.getElementById('month-grid');
+            var pattern = [1,1,0,1,1,1,0, 1,0,1,1,1,1,0, 1,1,1,0,1,1,1, 1,1,1,1,0,1,1, 1,1]; // 30 done/miss, last 2 = future
+            var todayIndex = 29; // index of "today" square (0-based)
+            for (var i = 0; i < 31; i++) {
+              var d = document.createElement('div');
+              var isFuture = i > 29;
+              var isToday = i === todayIndex;
+              var done = pattern[i] === 1;
+              d.style.aspectRatio = '1';
+              d.style.borderRadius = '7px';
+              d.style.position = 'relative';
+              if (isFuture) {
+                d.style.border = '1.5px solid rgba(255,255,255,0.06)';
+              } else if (done) {
+                d.style.background = 'var(--purple)';
+                d.style.opacity = isToday ? '1' : '0.85';
+              } else {
+                d.style.border = '1.5px solid rgba(255,255,255,0.16)';
+              }
+              if (isToday) {
+                d.style.boxShadow = done
+                  ? '0 0 0 1.5px var(--bg) inset, 0 0 0 3px var(--text)'
+                  : '0 0 0 1.5px var(--text) inset';
+              }
+              grid.appendChild(d);
+            }
+          })();
+        </script>
+
+        <div style="display:flex; gap:14px; padding: 16px 8px 4px; font-size:11.5px; color:var(--muted);">
+          <div style="display:flex; align-items:center; gap:5px;"><span style="width:11px;height:11px;border-radius:4px;background:var(--purple);display:inline-block;"></span> выполнено</div>
+          <div style="display:flex; align-items:center; gap:5px;"><span style="width:11px;height:11px;border-radius:4px;border:1.5px solid rgba(255,255,255,0.2);display:inline-block;"></span> пропущено</div>
+          <div style="display:flex; align-items:center; gap:5px;"><span style="width:11px;height:11px;border-radius:4px;border:1.5px solid rgba(255,255,255,0.06);display:inline-block;"></span> впереди</div>
+        </div>
+      </div>
+    </div>
+    <p class="annot">
+      Тап по привычке в списке — раньше некуда было проваливаться. Теперь открывается такой экран:
+      <b>число подряд + лучшая серия + месяц квадратиками</b> — ровно то, чего не хватает по сравнению
+      с другими трекерами привычек.
+    </p>
+  </div>
+
+</div>
+
+<p style="text-align:center; color: var(--muted); font-size: 12px; margin-top: 10px;">
+  © Letify — прототип редизайна экрана «План» · 30.07.2026
+</p>
+
+</body>
+</html>

@@ -272,6 +272,9 @@ fun PlanScreen(
     val sortedTasks = state.tasksToday().sortedBy { it.startMinutes }
     val pastTasks = sortedTasks.filter { it.statusAt(nowMin, dateKey) == TaskStatus.Done }
     val liveTasks = sortedTasks.filter { it.statusAt(nowMin, dateKey) == TaskStatus.Live }
+    // Time ran out but the user hasn't tapped the ring yet — stays in the
+    // regular flow (not «Прошедшие») until confirmed either way.
+    val missedTasks = sortedTasks.filter { it.statusAt(nowMin, dateKey) == TaskStatus.Missed }
     val upcomingTasks = sortedTasks.filter { it.statusAt(nowMin, dateKey) == TaskStatus.Upcoming }
 
     // ===== Long-press peek + multi-select state =============================
@@ -660,7 +663,7 @@ fun PlanScreen(
                     }
                 }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                (liveTasks + upcomingTasks).forEach { key(it.id) { flyingCard(it)(it) } }
+                (missedTasks + liveTasks + upcomingTasks).forEach { key(it.id) { flyingCard(it)(it) } }
                 AnimatedVisibility(
                     visible = pastTasks.isNotEmpty() || completingTasks.isNotEmpty(),
                     enter = fadeIn(tween(360, easing = FastOutSlowInEasing)) +
@@ -1591,6 +1594,9 @@ private fun TaskCard(
     val isPast = status == TaskStatus.Done
     val inWindow = status == TaskStatus.Live
     val isLive = inWindow
+    // Time ran out but nobody tapped the ring yet — plain row, ring still
+    // active and waiting, no accent/container.
+    val isMissed = status == TaskStatus.Missed
 
     val color = task.color
 
@@ -1652,7 +1658,12 @@ private fun TaskCard(
             .onGloballyPositioned { interaction?.onTaskBounds(task.id, it.boundsInWindow()) }
             .graphicsLayer { alpha = if (isPeek) 0f else dimAnim.value }
             .clip(RoundedCornerShape(24.dp))
-            .background(Letify.colors.container)
+            // Only the task actually happening right now (or still airborne
+            // mid-completion) gets a card background — every other row
+            // (missed, upcoming, done) is plain, no container.
+            .then(
+                if (liveLook) Modifier.background(Letify.colors.container) else Modifier,
+            )
             .peekGesture(
                 longPressEnabled = !selecting,
                 onTap = { if (selecting) interaction?.onToggleSelect(task.id) },
@@ -1682,7 +1693,10 @@ private fun TaskCard(
         }
 
         Row(
-            modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
+            modifier = Modifier.padding(
+                horizontal = 15.dp,
+                vertical = if (liveLook) 14.dp else 10.dp,
+            ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Single icon — no coloured tile. Past keeps its own icon (dimmed
@@ -1706,7 +1720,8 @@ private fun TaskCard(
                 val metaMode = when {
                     liveLook -> 0
                     isPast -> 1
-                    else -> 2
+                    isMissed -> 2
+                    else -> 3
                 }
                 Crossfade(
                     targetState = metaMode,
@@ -1730,6 +1745,13 @@ private fun TaskCard(
                                 Spacer(Modifier.width(7.dp)); TaskMetaDot(); Spacer(Modifier.width(7.dp))
                                 Text("Выполнено", color = Letify.colors.muted, style = Letify.typography.bodySmall)
                             }
+                            2 -> {
+                                Text(task.startTime, color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                                Spacer(Modifier.width(7.dp)); TaskMetaDot(); Spacer(Modifier.width(7.dp))
+                                Text(task.durationLabel, color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                                Spacer(Modifier.width(8.dp))
+                                MissedBadge()
+                            }
                             else -> {
                                 Text(task.startTime, color = Letify.colors.text, style = Letify.typography.bodySmall)
                                 Spacer(Modifier.width(7.dp)); TaskMetaDot(); Spacer(Modifier.width(7.dp))
@@ -1747,10 +1769,11 @@ private fun TaskCard(
                 Spacer(Modifier.width(10.dp))
                 SelectionCircle(selected = isSelected)
             } else {
-                // The completion ring lives ONLY on the task that is running
-                // right now — upcoming and past cards show nothing on the right.
-                // It stays filled through the flight and shrinks away after
-                // landing.
+                // The ring lives on the task that is running right now (with
+                // the animated fill/flight choreography), AND — plainly, no
+                // animation needed — on missed and already-done tasks, so the
+                // user can confirm or undo a completion at any time. Only a
+                // genuinely upcoming task shows nothing on the right.
                 AnimatedVisibility(
                     visible = liveLook,
                     enter = fadeIn(tween(200)) + expandHorizontally(tween(260, easing = FastOutSlowInEasing)),
@@ -1764,10 +1787,36 @@ private fun TaskCard(
                         ) { if (!completing && isLive) completing = true }
                     }
                 }
+                if (!liveLook && (isMissed || isPast)) {
+                    Spacer(Modifier.width(10.dp))
+                    TaskCheckCircle(
+                        filled = isPast,
+                        color = color,
+                    ) { state.toggleTaskDone(task.id) }
+                }
             }
         }
     }
 }
+
+/** Small amber "не отмечено" pill shown on a missed (time-passed, unconfirmed) task row. */
+@Composable
+private fun MissedBadge() {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(MissedAccentColor.copy(alpha = 0.14f))
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+    ) {
+        Text(
+            "не отмечено",
+            color = MissedAccentColor,
+            style = Letify.typography.labelSmall,
+        )
+    }
+}
+
+private val MissedAccentColor = Color(0xFFFFD166)
 
 // ───────────────────────────────────────────────────────────────────────────
 // Subtask task card — ring-progress button (left) that expands a checklist.
@@ -2017,8 +2066,13 @@ private fun TaskCheckCircle(
                 Modifier
                     .size(24.dp)
                     .graphicsLayer { scaleX = fill; scaleY = fill }
-                    .background(color, CircleShape)
-            )
+                    .background(color, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (filled) {
+                    SolarIcon(name = "check-bold", tint = Letify.colors.container, size = 13.dp)
+                }
+            }
         }
     }
 }
@@ -2270,10 +2324,11 @@ private fun PeekTaskCard(task: TaskItem, nowMin: Int, dateKey: String, expanded:
         return
     }
 
-    // ── Simple task card — mirrors TaskCard's live / upcoming / past look ──
+    // ── Simple task card — mirrors TaskCard's live / missed / upcoming / past look ──
     val status = task.statusAt(nowMin, dateKey)
     val isPast = status == TaskStatus.Done
     val isLive = status == TaskStatus.Live
+    val isMissed = status == TaskStatus.Missed
     val progress = if (isLive) {
         (task.elapsedMinutes(nowMin).toFloat() / task.durationMinutes.coerceAtLeast(1)).coerceIn(0f, 1f)
     } else 0f
@@ -2283,7 +2338,7 @@ private fun PeekTaskCard(task: TaskItem, nowMin: Int, dateKey: String, expanded:
             .fillMaxWidth()
             .graphicsLayer { alpha = if (isPast) PastCardAlpha else 1f }
             .clip(RoundedCornerShape(24.dp))
-            .background(Letify.colors.container),
+            .then(if (isLive) Modifier.background(Letify.colors.container) else Modifier),
     ) {
         if (isLive) {
             Box(Modifier.matchParentSize().clip(RoundedCornerShape(24.dp))) {
@@ -2296,7 +2351,7 @@ private fun PeekTaskCard(task: TaskItem, nowMin: Int, dateKey: String, expanded:
             }
         }
         Row(
-            modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = if (isLive) 14.dp else 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
@@ -2325,6 +2380,13 @@ private fun PeekTaskCard(task: TaskItem, nowMin: Int, dateKey: String, expanded:
                             Spacer(Modifier.width(7.dp)); TaskMetaDot(); Spacer(Modifier.width(7.dp))
                             Text("Выполнено", color = Letify.colors.muted, style = Letify.typography.bodySmall)
                         }
+                        isMissed -> {
+                            Text(task.startTime, color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                            Spacer(Modifier.width(7.dp)); TaskMetaDot(); Spacer(Modifier.width(7.dp))
+                            Text(task.durationLabel, color = Letify.colors.muted, style = Letify.typography.bodySmall)
+                            Spacer(Modifier.width(8.dp))
+                            MissedBadge()
+                        }
                         else -> {
                             Text(task.startTime, color = Letify.colors.text, style = Letify.typography.bodySmall)
                             Spacer(Modifier.width(7.dp)); TaskMetaDot(); Spacer(Modifier.width(7.dp))
@@ -2333,7 +2395,7 @@ private fun PeekTaskCard(task: TaskItem, nowMin: Int, dateKey: String, expanded:
                     }
                 }
             }
-            if (isLive) {
+            if (isLive || isMissed) {
                 Spacer(Modifier.width(10.dp))
                 // Resting (unfilled) completion ring — same as the live card.
                 Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
@@ -2342,6 +2404,14 @@ private fun PeekTaskCard(task: TaskItem, nowMin: Int, dateKey: String, expanded:
                             .size(24.dp)
                             .border(2.dp, Letify.colors.muted.copy(alpha = 0.85f), CircleShape)
                     )
+                }
+            } else if (isPast) {
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    Modifier.size(24.dp).clip(CircleShape).background(color),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SolarIcon(name = "check-bold", tint = Letify.colors.container, size = 13.dp)
                 }
             }
         }

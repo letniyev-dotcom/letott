@@ -1,14 +1,20 @@
 package com.letify.app
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import com.letify.app.ui.LetifyApp
 import com.letify.app.ui.icons.SolarIconLoader
 import com.letify.app.ui.state.LocalAppState
@@ -53,6 +59,24 @@ class MainActivity : ComponentActivity() {
                     this@MainActivity,
                     com.letify.app.ui.AppIconVariant.fromKey(appState.appIcon),
                 )
+            }
+            // Task reminders need POST_NOTIFICATIONS on Android 13+ — ask
+            // once up front rather than waiting for the user to stumble on
+            // the Notifications settings screen. Declining just means
+            // reminders stay silently scheduled but never shown, same as
+            // if the user later revokes the permission from system Settings.
+            val notifPermLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { /* no-op either way — reminders adapt automatically */ }
+            LaunchedEffect(Unit) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
             }
             CompositionLocalProvider(LocalAppState provides appState) {
                 LetifyTheme(mode = appState.themeMode, accent = appState.accent) {

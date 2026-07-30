@@ -118,7 +118,11 @@ data class WaterEntry(
 
 data class Meal(val name: String, val title: String, val icon: String, val color: Color, val kcal: Int?, val description: String?)
 
-enum class TaskStatus { Done, Live, Upcoming }
+// `Missed` = the task's time window has passed but the user has not
+// manually confirmed it — distinct from `Done` (actually confirmed). Time
+// running out no longer auto-completes a task; it only loses its "live"
+// look and waits for a tap on its ring.
+enum class TaskStatus { Done, Live, Missed, Upcoming }
 
 // A single checklist item inside a task ("подзадача"). `id` is stable within
 // the parent task so per-day completion can reference it.
@@ -196,7 +200,9 @@ data class TaskItem(
         }
         if (live) return TaskStatus.Live
         return if (endMinutes > startMinutes && nowMinutes >= endMinutes) {
-            TaskStatus.Done
+            // Time is up but nobody tapped the ring — no longer an automatic
+            // completion, just a plain "missed" state waiting for a tap.
+            TaskStatus.Missed
         } else {
             TaskStatus.Upcoming
         }
@@ -207,6 +213,7 @@ data class TaskItem(
         return when (statusAt(nowMinutes, dateKey)) {
             TaskStatus.Done -> "Выполнено"
             TaskStatus.Live -> "Идёт сейчас · до конца ${formatRelative(remainingMinutes(nowMinutes))}"
+            TaskStatus.Missed -> "Не отмечено"
             TaskStatus.Upcoming -> {
                 val left = startMinutes - nowMinutes
                 if (left <= 0) "Запланировано" else "Через ${formatRelative(left)}"
@@ -270,6 +277,10 @@ object Dates {
 class AppState(
     private val bindingStore: TelegramBindingStore? = null,
     private val dataStore: LetifyDataStore? = null,
+    // Application context — used only to schedule/cancel task reminder
+    // alarms (TaskReminders). Optional so previews/tests that construct
+    // AppState() directly still work; reminders are simply skipped then.
+    private val appContext: android.content.Context? = null,
 ) {
     // Theme + accent are PERSISTED (custom setters write to disk immediately,
     // initial values are loaded from disk) — otherwise the user's choice reset
@@ -738,6 +749,7 @@ class AppState(
         val withId = t.copy(id = id)
         tasks.add(withId)
         persistTasks()
+        scheduleReminder(withId)
         return withId
     }
 
@@ -747,11 +759,13 @@ class AppState(
         val idx = tasks.indexOfFirst { it.id == updated.id }
         if (idx < 0) return
         val old = tasks[idx]
-        tasks[idx] = updated.copy(
+        val merged = updated.copy(
             completions = old.completions,
             subtaskCompletions = old.subtaskCompletions,
         )
+        tasks[idx] = merged
         persistTasks()
+        scheduleReminder(merged)
     }
 
     /** Delete several tasks at once (multi-select «Удалить»). */
@@ -760,11 +774,27 @@ class AppState(
         val set = ids.toSet()
         tasks.removeAll { it.id in set }
         persistTasks()
+        appContext?.let { ctx -> set.forEach { com.letify.app.notifications.TaskReminders.cancel(ctx, it) } }
     }
 
     fun deleteTask(taskId: Int) {
         val idx = tasks.indexOfFirst { it.id == taskId }
-        if (idx >= 0) { tasks.removeAt(idx); persistTasks() }
+        if (idx >= 0) {
+            tasks.removeAt(idx)
+            persistTasks()
+            appContext?.let { com.letify.app.notifications.TaskReminders.cancel(it, taskId) }
+        }
+    }
+
+    /** (Re)schedules — or cancels, if reminders are off globally or for this
+     *  task — the alarm behind [task]'s "Напомнить заранее" toggle. */
+    private fun scheduleReminder(task: TaskItem) {
+        val ctx = appContext ?: return
+        if (notifyHabits) {
+            com.letify.app.notifications.TaskReminders.schedule(ctx, task)
+        } else {
+            com.letify.app.notifications.TaskReminders.cancel(ctx, task.id)
+        }
     }
 
     // Weight
@@ -858,7 +888,21 @@ class AppState(
 
     // Notifications (very lightweight UI-only flags for the screen)
     var notifyMorning by mutableStateOf(true)
-    var notifyHabits by mutableStateOf(true)
+    // Master switch for task/habit reminders. Turning it on (re)schedules
+    // every task's reminder alarm; turning it off cancels all of them.
+    private val _notifyHabits = mutableStateOf(true)
+    var notifyHabits: Boolean
+        get() = _notifyHabits.value
+        set(v) {
+            _notifyHabits.value = v
+            appContext?.let { ctx ->
+                if (v) {
+                    com.letify.app.notifications.TaskReminders.rescheduleAll(ctx)
+                } else {
+                    com.letify.app.notifications.TaskReminders.cancelAll(ctx)
+                }
+            }
+        }
     var notifyWater by mutableStateOf(false)
 
     // Legacy aliases retained for callers that still read the immutable goal.
@@ -872,7 +916,7 @@ class AppState(
         val nowMin = java.time.LocalTime.now().toSecondOfDay() / 60
         val dateKey = Dates.todayKey()
         val planP = if (today.isEmpty()) 0f else
-            today.count { it.statusAt(nowMin, dateKey) == TaskStatus.Done }.toFloat() / today.size
+            today.count { it.isCompletedOn(dateKey) }.toFloat() / today.size
         return ((w + k + planP) / 3f).coerceIn(0f, 1f)
     }
 }
@@ -886,6 +930,7 @@ fun rememberAppState(): AppState {
         AppState(
             bindingStore = TelegramBindingStore(context),
             dataStore = LetifyDataStore(context),
+            appContext = context,
         )
     }
 }

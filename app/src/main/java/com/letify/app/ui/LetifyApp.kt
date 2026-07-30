@@ -67,6 +67,7 @@ import com.letify.app.ui.components.RoundedSlideOverlay
 import com.letify.app.ui.components.rememberParallaxProgress
 import com.letify.app.ui.icons.SolarIcon
 import com.letify.app.ui.screens.AddHabitScreen
+import com.letify.app.ui.screens.AddNutritionScreen
 import com.letify.app.ui.screens.AddSleepScreen
 import com.letify.app.ui.screens.AddTaskScreen
 import com.letify.app.ui.screens.AddWeightScreen
@@ -78,9 +79,11 @@ import com.letify.app.ui.screens.HomeScreen
 import com.letify.app.ui.screens.LogsScreen
 import com.letify.app.ui.screens.NotificationsScreen
 import com.letify.app.ui.screens.OtherScreen
+import com.letify.app.ui.screens.NutritionScreen
 import com.letify.app.ui.screens.PlanScreen
 import com.letify.app.ui.screens.ProfileScreen
 import com.letify.app.ui.screens.ProgressGoalsScreen
+import com.letify.app.ui.screens.WaterHistoryScreen
 import com.letify.app.ui.screens.MediaScreen
 import com.letify.app.ui.screens.CameraCaptureScreen
 import com.letify.app.ui.screens.CameraPrewarm
@@ -118,6 +121,8 @@ sealed interface AddOverlay {
     // (from the long-press «Изменить» menu) instead of creating a new one.
     data class Habit(val editId: Int? = null) : AddOverlay
     data class Task(val editId: Int? = null) : AddOverlay
+    data object Nutrition : AddOverlay
+    data object NutritionHub : AddOverlay
     data object Weight : AddOverlay
     data object Sleep : AddOverlay
     data object EditProfile : AddOverlay
@@ -129,6 +134,7 @@ sealed interface AddOverlay {
     data object Other : AddOverlay
     data object Logs : AddOverlay
     data object ProgressGoals : AddOverlay
+    data object WaterHistory : AddOverlay
     data object Media : AddOverlay
 }
 
@@ -423,10 +429,9 @@ fun LetifyApp() {
                         when (tab) {
                             Tab.Home -> HomeScreen(
                                 onAddWeight = { push(AddOverlay.Weight) },
-                                // Nutrition/water/sleep screens are gone for now —
-                                // the cards stay visible on Home but no longer open
-                                // anything. Dedicated screens are coming later, one
-                                // per card.
+                                onOpenNutrition = { push(AddOverlay.NutritionHub) },
+                                onAddSleep = { push(AddOverlay.Sleep) },
+                                onAddMeal = { push(AddOverlay.Nutrition) },
                                 onOpenProfile = { changeTab(Tab.Profile) },
                                 onOpenPlan = { changeTab(Tab.Plan) },
                                 onOpenMoments = { push(AddOverlay.Media) },
@@ -554,6 +559,8 @@ fun LetifyApp() {
                                 onPushWeight = { rootSheet = AddOverlay.Weight },
                                 onPushSleep = { rootSheet = AddOverlay.Sleep },
                                 onOpenCameraExpand = { openCamera() },
+                                onPushNutrition = { push(AddOverlay.Nutrition) },
+                                onPushWaterHistory = { push(AddOverlay.WaterHistory) },
                             )
                         }
                     }
@@ -629,10 +636,18 @@ private fun OverlayContent(
     onPushSleep: () -> Unit = {},
     onPushBindings: () -> Unit = {},
     onOpenCameraExpand: () -> Unit = {},
+    onPushNutrition: () -> Unit = {},
+    onPushWaterHistory: () -> Unit = {},
 ) {
     when (current) {
         is AddOverlay.Habit -> AddHabitScreen(onBack = animatedBack, editId = current.editId)
         is AddOverlay.Task -> AddTaskScreen(onBack = animatedBack, editId = current.editId)
+        AddOverlay.Nutrition -> AddNutritionScreen(onBack = animatedBack)
+        AddOverlay.NutritionHub -> NutritionScreen(
+            onBack = animatedBack,
+            onAddMeal = onPushNutrition,
+            onWaterHistory = onPushWaterHistory,
+        )
         AddOverlay.Sleep -> AddSleepScreen(onBack = animatedBack)
         AddOverlay.Weight -> {} // weight is a bottom-sheet, handled elsewhere
         AddOverlay.EditProfile -> EditProfileScreen(onBack = animatedBack)
@@ -647,6 +662,7 @@ private fun OverlayContent(
             onBindings = onPushBindings,
         )
         AddOverlay.Logs -> LogsScreen(onBack = animatedBack)
+        AddOverlay.WaterHistory -> WaterHistoryScreen(onBack = animatedBack)
         AddOverlay.ProgressGoals -> ProgressGoalsScreen(
             onBack = animatedBack,
             onAddWeight = onPushWeight,

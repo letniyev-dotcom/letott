@@ -38,6 +38,11 @@ class LetifyApplication : Application() {
         // defensively in case Application.onCreate was skipped (e.g.
         // by some constrained runtime).
         SolarIconLoader.prewarmAll(this)
+        // Re-derive every task's next reminder alarm. AlarmManager alarms
+        // don't survive a reboot (BootReceiver handles that case) but can
+        // also be silently dropped across an app update, so it's cheap
+        // insurance to just recompute them every cold start too.
+        com.letify.app.notifications.TaskReminders.rescheduleAll(this)
     }
 }
 

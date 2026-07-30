@@ -151,7 +151,7 @@ fun HomeScreen(
     val tasks = state.tasksToday()
     val nowMin = LocalTime.now().toSecondOfDay() / 60
     val dateKey = com.letify.app.ui.state.Dates.todayKey()
-    val done = tasks.count { it.statusAt(nowMin, dateKey) == TaskStatus.Done }
+    val done = tasks.count { it.isCompletedOn(dateKey) }
 
     // Plan preview: the task currently live (or, if none, the nearest upcoming
     // one) shown first, followed by the next two upcoming tasks.

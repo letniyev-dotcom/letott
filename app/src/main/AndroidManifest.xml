@@ -15,6 +15,21 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
+        Task reminders ("Напомнить заранее" in the task editor) are local
+        notifications fired from an AlarmManager alarm — not a remote/server
+        push. POST_NOTIFICATIONS is the runtime prompt on Android 13+;
+        SCHEDULE_EXACT_ALARM is the special "Alarms & reminders" access the
+        user grants from Settings on Android 12+ (we fall back to inexact
+        delivery if it's not granted, see TaskReminders.schedule);
+        RECEIVE_BOOT_COMPLETED lets BootReceiver restore alarms the OS wipes
+        on every reboot.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
         Open Telegram via deep link from the bindings screen. On Android 11+
         package visibility rules require this to be declared explicitly, even
         for VIEW intents — without it queryIntentActivities returns nothing
@@ -156,6 +171,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+
+        <!-- Fires task reminder notifications scheduled by TaskReminders. -->
+        <receiver
+            android:name=".notifications.TaskReminderReceiver"
+            android:exported="false" />
+
+        <!-- Restores all pending reminder alarms after a reboot, since
+             AlarmManager clears them every time the device restarts. -->
+        <receiver
+            android:name=".notifications.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

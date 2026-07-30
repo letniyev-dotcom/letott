@@ -1,5 +1,12 @@
 package com.letify.app.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +28,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import com.letify.app.notifications.TaskReminders
 import com.letify.app.ui.components.AccentSwitch
 import com.letify.app.ui.components.NoFeedbackButton
 import com.letify.app.ui.components.SettingsCard
@@ -37,7 +47,13 @@ import com.letify.app.ui.theme.LetifyColors
 @Composable
 fun NotificationsScreen(onBack: () -> Unit) {
     val state = LocalAppState.current
+    val context = LocalContext.current
     val scroll = rememberScrollState()
+
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* no-op — reminders just stay silent until granted */ }
+
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         Column(
             Modifier
@@ -75,7 +91,35 @@ fun NotificationsScreen(onBack: () -> Unit) {
                     trailing = {
                         AccentSwitch(
                             checked = state.notifyHabits,
-                            onCheckedChange = { state.notifyHabits = it },
+                            onCheckedChange = { checked ->
+                                // Flips the switch AND (re)schedules / cancels every
+                                // task's reminder alarm — see AppState.notifyHabits.
+                                state.notifyHabits = checked
+                                if (checked) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.POST_NOTIFICATIONS,
+                                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                    if (!TaskReminders.canScheduleExact(context)) {
+                                        // "Alarms & reminders" is a special access the user
+                                        // grants from Settings — there's no in-app dialog for
+                                        // it. Reminders still work without it (falling back to
+                                        // inexact delivery), this just gets on-time delivery.
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(
+                                                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                                    Uri.parse("package:${context.packageName}"),
+                                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                            )
+                                        }
+                                    }
+                                }
+                            },
                         )
                     },
                 )
