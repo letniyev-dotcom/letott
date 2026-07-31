@@ -278,9 +278,9 @@ fun ProfileScreen(
             )
             SettingsRowDivider()
             SettingsRow(
-                icon = "gallery-bold-duotone",
+                icon = "notebook-bold-duotone",
                 iconTile = LetifyColors.TilePink,
-                title = "Моменты",
+                title = "Стена",
                 onClick = onMedia,
             )
             SettingsRowDivider()

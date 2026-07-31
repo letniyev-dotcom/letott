@@ -7,6 +7,8 @@ import com.letify.app.ui.state.Habit
 import com.letify.app.ui.state.SleepEntry
 import com.letify.app.ui.state.Subtask
 import com.letify.app.ui.state.TaskItem
+import com.letify.app.ui.state.VoiceNote
+import com.letify.app.ui.state.WallNote
 import com.letify.app.ui.state.WaterEntry
 import com.letify.app.ui.state.WeightEntry
 
@@ -341,6 +343,64 @@ class LetifyDataStore(context: Context) {
         prefs.edit().putString(KEY_MEDIA_NOTES, raw).apply()
     }
 
+    // Wall voice notes. Fields separated by U+0001, records by newline
+    // (same scheme as tasks/habits) — id/uri/duration/createdAt never
+    // contain either character.
+    // 0:id 1:uri 2:durationMs 3:createdAt
+    fun loadVoiceNotes(): List<VoiceNote> {
+        val raw = prefs.getString(KEY_VOICE_NOTES, null) ?: return emptyList()
+        return raw.split('\n').mapNotNull { token ->
+            if (token.isBlank()) return@mapNotNull null
+            val p = token.split('\u0001')
+            if (p.size < 4) return@mapNotNull null
+            runCatching {
+                VoiceNote(
+                    id = p[0],
+                    uri = p[1],
+                    durationMs = p[2].toInt(),
+                    createdAt = p[3].toLong(),
+                )
+            }.getOrNull()
+        }
+    }
+
+    fun saveVoiceNotes(notes: List<VoiceNote>) {
+        val raw = notes.joinToString("\n") { n ->
+            listOf(n.id, n.uri, n.durationMs.toString(), n.createdAt.toString())
+                .joinToString("\u0001")
+        }
+        prefs.edit().putString(KEY_VOICE_NOTES, raw).apply()
+    }
+
+    // Wall text notes. Same field/record scheme as above. Free text can
+    // contain real newlines, so those are swapped for U+2028 (a line
+    // separator a user would never type) before joining and restored on
+    // load — the record separator itself stays a plain '\n'.
+    // 0:id 1:text(escaped) 2:createdAt
+    fun loadWallNotes(): List<WallNote> {
+        val raw = prefs.getString(KEY_WALL_NOTES, null) ?: return emptyList()
+        return raw.split('\n').mapNotNull { token ->
+            if (token.isBlank()) return@mapNotNull null
+            val p = token.split('\u0001')
+            if (p.size < 3) return@mapNotNull null
+            runCatching {
+                WallNote(
+                    id = p[0],
+                    text = p[1].replace('\u2028', '\n'),
+                    createdAt = p[2].toLong(),
+                )
+            }.getOrNull()
+        }
+    }
+
+    fun saveWallNotes(notes: List<WallNote>) {
+        val raw = notes.joinToString("\n") { n ->
+            listOf(n.id, n.text.replace('\n', '\u2028'), n.createdAt.toString())
+                .joinToString("\u0001")
+        }
+        prefs.edit().putString(KEY_WALL_NOTES, raw).apply()
+    }
+
     private companion object {
         const val RECORD_SEP = ";"
         const val FIELD_SEP = "|"
@@ -366,5 +426,7 @@ class LetifyDataStore(context: Context) {
         const val KEY_WATER_LOG = "water_log"
         const val KEY_KCAL_TARGET = "kcal_target"
         const val KEY_DEFAULT_TAB = "default_tab"
+        const val KEY_VOICE_NOTES = "wall_voice_notes_v1"
+        const val KEY_WALL_NOTES = "wall_text_notes_v1"
     }
 }

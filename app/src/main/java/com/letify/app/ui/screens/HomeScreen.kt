@@ -337,10 +337,10 @@ fun HomeScreen(
                     Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("Моменты", color = Letify.colors.text, style = Letify.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Стена", color = Letify.colors.text, style = Letify.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Text(
-                        if (moments.isEmpty()) "добавь первый"
-                        else "${state.mediaItems.size} в ленте",
+                        if (state.wallEntryCount == 0) "добавь первую запись"
+                        else "${state.wallEntryCount} в ленте",
                         color = Letify.colors.muted,
                         style = Letify.typography.bodyMedium,
                     )

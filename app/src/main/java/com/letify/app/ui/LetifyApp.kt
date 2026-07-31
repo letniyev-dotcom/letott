@@ -84,7 +84,7 @@ import com.letify.app.ui.screens.PlanScreen
 import com.letify.app.ui.screens.ProfileScreen
 import com.letify.app.ui.screens.ProgressGoalsScreen
 import com.letify.app.ui.screens.WaterHistoryScreen
-import com.letify.app.ui.screens.MediaScreen
+import com.letify.app.ui.screens.WallScreen
 import com.letify.app.ui.screens.CameraCaptureScreen
 import com.letify.app.ui.screens.CameraPrewarm
 import com.letify.app.ui.state.LocalAppState
@@ -673,7 +673,7 @@ private fun OverlayContent(
             onAddWeight = onPushWeight,
             onAddSleep = onPushSleep,
         )
-        AddOverlay.Media -> MediaScreen(
+        AddOverlay.Media -> WallScreen(
             onBack = animatedBack,
             onOpenCamera = onOpenCameraExpand,
         )

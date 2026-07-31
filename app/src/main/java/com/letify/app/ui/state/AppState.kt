@@ -108,6 +108,21 @@ data class MediaItem(
     val thumbUri: String = "",
 )
 
+/** A voice message block on the Wall. Audio file lives in filesDir/voice/. */
+data class VoiceNote(
+    val id: String,
+    val uri: String,
+    val durationMs: Int,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+/** A plain-text block on the Wall. */
+data class WallNote(
+    val id: String,
+    val text: String,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 data class WaterEntry(
     val ml: Int,
     val time: String,
@@ -553,6 +568,55 @@ class AppState(
     fun removeMedia(item: MediaItem) {
         mediaItems.remove(item)
         runCatching { java.io.File(java.net.URI(item.uri)).delete() }
+    }
+
+    // ── Wall (voice notes + text notes) ────────────────────────────────
+    // "Стена" reuses [mediaItems] above for photo/video blocks and adds two
+    // more block kinds of its own: short voice notes recorded in-app and
+    // plain text notes. Both are small enough to load eagerly (same pattern
+    // as [waterHistory]/weight log below) instead of the lazy disk-scan
+    // [mediaItems] needs for files.
+    val voiceNotes: SnapshotStateList<VoiceNote> = mutableStateListOf<VoiceNote>().apply {
+        dataStore?.loadVoiceNotes()?.let { addAll(it) }
+    }
+
+    val wallNotes: SnapshotStateList<WallNote> = mutableStateListOf<WallNote>().apply {
+        dataStore?.loadWallNotes()?.let { addAll(it) }
+    }
+
+    /** Total block count shown under "Стена" (photos/videos + voice + text). */
+    val wallEntryCount: Int get() = mediaItems.size + voiceNotes.size + wallNotes.size
+
+    fun addVoiceNote(path: String, durationMs: Int) {
+        val f = java.io.File(path)
+        voiceNotes.add(
+            0,
+            VoiceNote(
+                id = f.name,
+                uri = f.toURI().toString(),
+                durationMs = durationMs,
+                createdAt = f.lastModified().takeIf { it > 0 } ?: System.currentTimeMillis(),
+            ),
+        )
+        dataStore?.saveVoiceNotes(voiceNotes)
+    }
+
+    fun removeVoiceNote(item: VoiceNote) {
+        voiceNotes.remove(item)
+        dataStore?.saveVoiceNotes(voiceNotes)
+        runCatching { java.io.File(java.net.URI(item.uri)).delete() }
+    }
+
+    fun addWallNote(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        wallNotes.add(0, WallNote(id = "note_${System.currentTimeMillis()}", text = trimmed))
+        dataStore?.saveWallNotes(wallNotes)
+    }
+
+    fun removeWallNote(item: WallNote) {
+        wallNotes.remove(item)
+        dataStore?.saveWallNotes(wallNotes)
     }
 
     /** Log a water intake for right now (today). Persists immediately. */
