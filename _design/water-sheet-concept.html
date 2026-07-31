@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Записать воду — концепт ботомшита</title>
+<style>
+  :root{
+    --bg:#000; --container:#181818; --container-2:#1f1f22; --track:rgba(255,255,255,0.08);
+    --divider:rgba(255,255,255,0.06); --text:#f4f4f5; --muted:#8a8a92; --muted-2:#5b5b62;
+    --accent:#5AA7FF; --accent-soft:rgba(90,167,255,0.16); --accent-ink:#06182F;
+    --amber:#FFB347; --amber-soft:rgba(255,179,71,0.16);
+    --mint:#7CD992; --violet:#B084F5;
+    --scrim:rgba(0,0,0,0.42);
+    --page-bg:#050507;
+    --shadow: 0 30px 80px -20px rgba(0,0,0,0.7), 0 0 0 6px #0a0a0c;
+  }
+  [data-theme="light"]{
+    --bg:#F1F1F3; --container:#FFFFFF; --container-2:#F6F6F8; --track:rgba(0,0,0,0.06);
+    --divider:rgba(0,0,0,0.06); --text:#18181B; --muted:#6B6B73; --muted-2:#9a9aa1;
+    --accent-ink:#06182F; --scrim:rgba(20,20,24,0.32);
+    --page-bg:#e9e9ec;
+    --shadow: 0 30px 70px -24px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--page-bg);font-family:"Manrope",-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",sans-serif;-webkit-font-smoothing:antialiased;}
+  body{
+    padding:40px 20px 70px; min-height:100vh;
+    background: radial-gradient(900px 560px at 12% -8%, rgba(90,167,255,0.10), transparent 60%),
+                radial-gradient(900px 560px at 108% 108%, rgba(124,217,146,0.07), transparent 60%),
+                var(--page-bg);
+    transition:background .3s ease;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  h1{color:var(--text);font-weight:800;font-size:22px;letter-spacing:-0.02em;margin:0 0 6px;text-align:center;}
+  .subtitle{color:var(--muted);font-size:13px;text-align:center;max-width:560px;line-height:1.6;margin:0 0 28px;}
+  .subtitle b{color:var(--accent);font-weight:700;}
+
+  .toolbar{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:30px;}
+  .tbtn{
+    display:flex;align-items:center;gap:7px;height:38px;padding:0 16px;border-radius:999px;
+    background:var(--container);border:1px solid var(--divider);color:var(--text);font-weight:700;font-size:13px;
+    cursor:pointer;user-select:none;transition:transform .15s ease, background .2s ease; box-shadow:0 1px 0 rgba(255,255,255,0.02) inset;
+  }
+  .tbtn:active{transform:scale(0.96);}
+  .tbtn.accent{background:var(--accent);color:#fff;border-color:transparent;}
+
+  .stage{display:flex;gap:36px;flex-wrap:wrap;justify-content:center;align-items:flex-start;max-width:920px;}
+
+  /* ---------- Phone frame ---------- */
+  .phone-wrap{display:flex;flex-direction:column;align-items:center;}
+  .phone-label{color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:12px;}
+  .phone{
+    width:360px; height:780px; background:var(--bg); border-radius:38px; border:1px solid rgba(127,127,127,0.14);
+    box-shadow:var(--shadow); position:relative; overflow:hidden; padding:12px 0 0; transition:background .3s ease;
+  }
+  .phone::before{content:"";position:absolute;top:12px;left:50%;transform:translateX(-50%);width:110px;height:28px;border-radius:16px;background:#050507;z-index:80;}
+  [data-theme="light"] .phone::before{background:#0c0c0d;}
+  .status-bar{height:28px;display:flex;justify-content:space-between;align-items:center;padding:0 26px;font-size:13px;font-weight:700;color:var(--text);}
+  .status-bar .icons{display:flex;gap:5px;opacity:.9;align-items:center;}
+
+  /* ---------- Background "Progress → Water" screen ---------- */
+  .bg-screen{padding:8px 18px 0;height:100%;display:flex;flex-direction:column;}
+  .bg-header{display:flex;align-items:center;justify-content:space-between;padding:6px 2px 14px;}
+  .bg-title{font-weight:800;font-size:24px;letter-spacing:-0.02em;color:var(--text);}
+  .seg{display:flex;gap:6px;background:var(--track);padding:4px;border-radius:14px;margin-bottom:16px;}
+  .seg span{flex:1;text-align:center;padding:8px 0;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--muted);}
+  .seg span.on{background:var(--container);color:var(--text);}
+
+  .water-card{background:var(--container);border-radius:20px;padding:18px;margin-bottom:14px;position:relative;overflow:hidden;}
+  .water-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .water-card-title{font-weight:800;font-size:15px;color:var(--text);}
+  .fab{
+    width:34px;height:34px;border-radius:999px;background:var(--accent-soft);color:var(--accent);
+    display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;cursor:pointer;
+    transition:transform .15s ease;
+  }
+  .fab:active{transform:scale(0.9);}
+  .water-row{display:flex;align-items:center;gap:16px;}
+  .capsule{width:46px;height:96px;border-radius:999px;background:var(--container-2);position:relative;overflow:hidden;flex:none;}
+  .capsule .fill{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(180deg, rgba(90,167,255,0.85), #3A8FE0);border-radius:0 0 999px 999px;}
+  .water-num{font-weight:800;font-size:26px;color:var(--text);letter-spacing:-0.02em;}
+  .water-sub{font-size:12px;color:var(--muted);margin-top:2px;font-weight:600;}
+  .water-goal-bar{height:8px;border-radius:999px;background:var(--track);margin-top:12px;overflow:hidden;}
+  .water-goal-bar i{display:block;height:100%;background:linear-gradient(90deg, var(--accent), #3A8FE0);border-radius:999px;}
+
+  .hint-row{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;font-weight:600;padding:2px 4px;}
+
+  /* ---------- Scrim + Sheet ---------- */
+  .scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .32s cubic-bezier(.22,1,.36,1);z-index:90;}
+  .scrim.show{opacity:1;pointer-events:auto;}
+
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;background:var(--container);
+    border-radius:28px 28px 0 0; transform:translateY(102%); transition:transform .32s cubic-bezier(.22,1,.36,1);
+    z-index:95; padding-bottom:14px; box-shadow:0 -20px 60px -24px rgba(0,0,0,0.5);
+  }
+  .sheet.show{transform:translateY(0);}
+  .sheet.dragging{transition:none;}
+
+  .handle-zone{display:flex;justify-content:center;padding:10px 0 6px;cursor:grab;touch-action:none;}
+  .handle{width:38px;height:4px;border-radius:999px;background:var(--muted);opacity:.45;}
+
+  .sheet-title-row{display:flex;align-items:center;justify-content:space-between;padding:4px 18px 10px;}
+  .sheet-title{font-weight:800;font-size:20px;letter-spacing:-0.01em;color:var(--text);}
+  .check-btn{
+    width:38px;height:38px;border-radius:999px;background:transparent;display:flex;align-items:center;justify-content:center;
+    color:var(--accent);cursor:pointer;transition:transform .12s ease, background .15s ease;
+  }
+  .check-btn:active{transform:scale(0.88);background:var(--accent-soft);}
+  .check-btn svg{width:22px;height:22px;}
+
+  .hero{display:flex;flex-direction:column;align-items:center;padding:2px 18px 16px;}
+  .hero-drop{width:44px;height:44px;margin-bottom:6px;}
+  .hero-amount{display:flex;align-items:baseline;gap:5px;}
+  .hero-amount b{font-weight:800;font-size:38px;letter-spacing:-0.02em;color:var(--text);line-height:1;}
+  .hero-amount span{font-weight:700;font-size:15px;color:var(--muted);}
+  .hero-pill{margin-top:9px;padding:6px 14px;border-radius:999px;font-size:12.5px;font-weight:700;background:var(--accent-soft);color:var(--accent);transition:background .2s ease,color .2s ease;}
+
+  .field-label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:0 18px;margin:6px 0 8px;}
+
+  /* Quick preset chips — tapping one snaps the drum to that value */
+  .preset-row{display:flex;gap:8px;padding:0 18px;margin-bottom:4px;}
+  .preset{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:14px;
+    background:var(--container-2);cursor:pointer;transition:background .18s ease,box-shadow .18s ease,transform .12s ease;
+  }
+  .preset .ico{font-size:17px;}
+  .preset .lb{font-size:10.5px;font-weight:700;color:var(--muted);}
+  .preset .ml{font-size:9.5px;font-weight:600;color:var(--muted-2);}
+  .preset.on{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent);}
+  .preset.on .lb, .preset.on .ml{color:var(--accent);}
+  .preset:active{transform:scale(0.96);}
+
+  /* ---------- The drum itself ---------- */
+  .drum-wrap{padding:6px 18px 4px;}
+  .drum-card{background:var(--container-2);border-radius:20px;padding:6px 0;position:relative;}
+  .drum{
+    height:150px;overflow-y:scroll;scroll-snap-type:y mandatory;-ms-overflow-style:none;scrollbar-width:none;
+    position:relative;
+    /* The dissolve: a soft alpha gradient mask instead of a hard clip, so
+       rows melt away at the top/bottom edges of the drum instead of
+       getting cut off mid-glyph. Mirrors the DstIn gradient mask used by
+       the real Compose WheelPicker (see WheelPicker.kt). */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.35) 16%, rgba(0,0,0,0.9) 32%, #000 50%, rgba(0,0,0,0.9) 68%, rgba(0,0,0,0.35) 84%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.35) 16%, rgba(0,0,0,0.9) 32%, #000 50%, rgba(0,0,0,0.9) 68%, rgba(0,0,0,0.35) 84%, transparent 100%);
+  }
+  .drum::-webkit-scrollbar{display:none;}
+  .drum .pad{height:55px;}
+  .drum .row{height:40px;display:flex;align-items:baseline;justify-content:center;gap:6px;scroll-snap-align:center;}
+  .drum .row .n{font-size:17px;font-weight:700;color:var(--muted-2);transition:color .15s ease, font-size .15s ease;}
+  .drum .row .u{font-size:11px;font-weight:700;color:var(--muted-2);opacity:0;transition:opacity .15s ease;}
+  .drum .row.mid .n{color:var(--text);font-size:25px;}
+  .drum .row.mid .u{color:var(--muted);opacity:1;}
+  .drum-select-bar{position:absolute;left:14px;right:14px;top:55px;height:40px;background:var(--track);border-radius:12px;pointer-events:none;z-index:2;}
+  .drum-fine{display:flex;justify-content:center;gap:10px;padding:10px 0 2px;}
+  .fine-btn{
+    width:34px;height:34px;border-radius:999px;background:var(--container-2);display:flex;align-items:center;justify-content:center;
+    color:var(--text);cursor:pointer;font-weight:800;font-size:15px;user-select:none;transition:transform .12s ease;
+  }
+  .fine-btn:active{transform:scale(0.88);}
+
+  .notes{width:340px;color:var(--muted);font-size:13px;line-height:1.7;}
+  .notes h3{color:var(--text);font-size:14px;font-weight:800;margin:0 0 10px;display:flex;align-items:center;gap:8px;}
+  .notes .dot{width:6px;height:6px;border-radius:999px;background:var(--accent);flex:none;}
+  .notes ul{margin:0 0 20px;padding-left:18px;}
+  .notes li{margin-bottom:8px;}
+  .notes li b{color:var(--text);}
+  .badge{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--amber);background:var(--amber-soft);padding:2px 8px;border-radius:6px;margin-right:6px;}
+
+  @media (max-width:820px){ .stage{gap:24px;} }
+</style>
+</head>
+<body data-theme="dark">
+
+  <h1>Записать воду — концепт ботомшита</h1>
+  <p class="subtitle">Сегодня «Вода» — это слайдер прямо на экране «Прогресс», без отдельной шторки. Концепт переносит ввод в тот же <b>ботомшит</b>, что «Вес»/«Сон»: один барабан на объём (мл) + быстрые пресеты стакан/бутылка, сохранение — галочкой в шапке.</p>
+
+  <div class="toolbar">
+    <div class="tbtn accent" id="openBtn">▲ Открыть шторку</div>
+    <div class="tbtn" id="themeBtn">☾ Тёмная / Светлая</div>
+  </div>
+
+  <div class="stage">
+    <div class="phone-wrap">
+      <div class="phone-label">Прогресс → Вода</div>
+      <div class="phone" id="phone">
+        <div class="status-bar"><span>21:07</span><span class="icons">●●●&nbsp;LTE&nbsp;▮</span></div>
+
+        <div class="bg-screen">
+          <div class="bg-header"><div class="bg-title">Прогресс</div></div>
+          <div class="seg"><span>Вес</span><span class="on">Вода</span><span>Сон</span></div>
+
+          <div class="water-card">
+            <div class="water-card-top">
+              <div class="water-card-title">Вода · сегодня</div>
+              <div class="fab" id="fabBtn">+</div>
+            </div>
+            <div class="water-row">
+              <div class="capsule"><div class="fill" style="height:62%"></div></div>
+              <div>
+                <div class="water-num">1550 мл</div>
+                <div class="water-sub">из 2500 мл · осталось 950</div>
+                <div class="water-goal-bar" style="width:170px"><i style="width:62%"></i></div>
+              </div>
+            </div>
+          </div>
+          <div class="hint-row">↑ нажмите «+» или кнопку сверху, чтобы открыть шторку</div>
+        </div>
+
+        <div class="scrim" id="scrim"></div>
+
+        <div class="sheet" id="sheet">
+          <div class="handle-zone" id="handleZone"><div class="handle"></div></div>
+          <div class="sheet-title-row">
+            <div class="sheet-title">Записать воду</div>
+            <div class="check-btn" id="saveBtn">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+
+          <div class="hero">
+            <svg class="hero-drop" viewBox="0 0 44 44" fill="none">
+              <path d="M22 4C22 4 9 19.5 9 28a13 13 0 0 0 26 0C35 19.5 22 4 22 4z" fill="var(--accent)" opacity="0.92"/>
+              <path d="M14.5 27c0 3.5 2 6.2 4.8 7.4" stroke="#fff" stroke-opacity="0.55" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <div class="hero-amount"><b id="heroAmount">250</b><span>мл</span></div>
+            <div class="hero-pill" id="heroPill">10% от дневной нормы</div>
+          </div>
+
+          <div class="field-label">Быстрый выбор</div>
+          <div class="preset-row" id="presetRow">
+            <div class="preset" data-ml="100"><div class="ico">💧</div><div class="lb">Глоток</div><div class="ml">100 мл</div></div>
+            <div class="preset on" data-ml="250"><div class="ico">🥤</div><div class="lb">Стакан</div><div class="ml">250 мл</div></div>
+            <div class="preset" data-ml="500"><div class="ico">🍶</div><div class="lb">Бутылка</div><div class="ml">500 мл</div></div>
+            <div class="preset" data-ml="750"><div class="ico">🧴</div><div class="lb">Большая</div><div class="ml">750 мл</div></div>
+          </div>
+
+          <div class="field-label">Объём</div>
+          <div class="drum-wrap">
+            <div class="drum-card">
+              <div class="drum-select-bar"></div>
+              <div class="drum" id="drum"></div>
+            </div>
+            <div class="drum-fine">
+              <div class="fine-btn" id="minusBtn">−10</div>
+              <div class="fine-btn" id="plusBtn">+10</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h3><span class="dot"></span>Почему один барабан, а не «литры + мл»</h3>
+      <ul>
+        <li>Вода не считается людьми в долях литра на глаз — обычно мыслят «стаканами» и «бутылками». Два раздельных барабана (л/мл), как у времени в «Сне», тут добавили бы шаг счёта, который никому не нужен: одно число 50–2000 с шагом 10 читается быстрее.</li>
+        <li>Шаг барабана — <b>10 мл</b>, диапазон 50–2000. Крупный текст в центре, соседние строки того же формата, что у «Сна»/«Веса» — цифра растворяется по мягкой alpha‑маске сверху/снизу (<code>mask-image</code>), а не обрезается.</li>
+        <li>Под барабаном — пара мелких <b>±10</b> для точной докрутки без прокрутки барабана (актуально когда нужно поправить на пару делений, а не крутить весь диапазон).</li>
+      </ul>
+      <h3><span class="dot"></span>Пресеты сверху барабана</h3>
+      <ul>
+        <li>4 чипса — Глоток/Стакан/Бутылка/Большая — те же категории, что уже есть в реальном коде (<code>labelFor</code>/<code>iconFor</code> в <code>NutritionScreen.kt</code>). Тап по чипсу задаёт барабану точное значение и подсвечивается сам; докрутка барабана вручную снимает подсветку, если значение больше не совпадает.</li>
+        <li>Экономит движение: большинство добавлений — это один тап по «Стакан» или «Бутылка», барабан нужен только для нестандартных объёмов.</li>
+      </ul>
+      <h3><span class="dot"></span>Сохранение и живой расчёт</h3>
+      <ul>
+        <li>Как договорились для «Сна» — сохранение теперь <b>галочка в шапке</b>, а не большая кнопка внизу. Единая механика во всех трёх шитах (Вес / Сон / Вода).</li>
+        <li>Пилюля под цифрой пересчитывается вживую: «X% от дневной нормы» — сколько текущее значение барабана добавит к сегодняшнему потреблению относительно цели (2500 мл по умолчанию), тот же принцип, что «В пределах нормы» у сна.</li>
+        <li><span class="badge">на заметку</span>фоновая карточка «Вода» на самом экране Прогресса не меняется — капсула + число уже хорошо работают; шторка добавляется как более быстрый способ ввода произвольного объёма, слайдер на экране можно оставить для истории или убрать при переносе — на усмотрение при реализации.</li>
+      </ul>
+      <p>Открыть/закрыть шторку, покрутить барабан, тапнуть пресет и переключить светлую/тёмную тему можно прямо в макете слева.</p>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const sheet = document.getElementById('sheet');
+  const scrim = document.getElementById('scrim');
+  const openBtn = document.getElementById('openBtn');
+  const fabBtn = document.getElementById('fabBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const themeBtn = document.getElementById('themeBtn');
+
+  function openSheet(){ scrim.classList.add('show'); sheet.classList.add('show'); }
+  function closeSheet(){ scrim.classList.remove('show'); sheet.classList.remove('show'); }
+  openBtn.onclick = openSheet;
+  fabBtn.onclick = openSheet;
+  scrim.onclick = closeSheet;
+  saveBtn.onclick = closeSheet;
+
+  themeBtn.onclick = function(){
+    const cur = document.body.getAttribute('data-theme');
+    document.body.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+  };
+
+  // ---- drag to dismiss on handle ----
+  let dragging=false, startY=0, curTranslate=0;
+  const handleZone = document.getElementById('handleZone');
+  function pointY(e){ return e.touches ? e.touches[0].clientY : e.clientY; }
+  function dragStart(e){ dragging=true; startY=pointY(e); sheet.classList.add('dragging'); }
+  function dragMove(e){
+    if(!dragging) return;
+    const dy = Math.max(0, pointY(e)-startY);
+    curTranslate = dy;
+    sheet.style.transform = 'translateY(' + dy + 'px)';
+  }
+  function dragEnd(){
+    if(!dragging) return;
+    dragging=false; sheet.classList.remove('dragging');
+    sheet.style.transform='';
+    if(curTranslate > sheet.offsetHeight*0.18){ closeSheet(); } else { sheet.classList.add('show'); }
+    curTranslate=0;
+  }
+  handleZone.addEventListener('mousedown', dragStart);
+  window.addEventListener('mousemove', dragMove);
+  window.addEventListener('mouseup', dragEnd);
+  handleZone.addEventListener('touchstart', dragStart, {passive:true});
+  window.addEventListener('touchmove', dragMove, {passive:true});
+  window.addEventListener('touchend', dragEnd);
+
+  // ---- the ml drum ----
+  const ROW_H = 40;
+  const MIN_ML = 50, MAX_ML = 2000, STEP_ML = 10;
+  const values = [];
+  for(let v=MIN_ML; v<=MAX_ML; v+=STEP_ML) values.push(v);
+
+  const drumEl = document.getElementById('drum');
+  const pad1 = document.createElement('div'); pad1.className='pad'; drumEl.appendChild(pad1);
+  values.forEach(v=>{
+    const row = document.createElement('div'); row.className='row';
+    row.innerHTML = '<span class="n">'+v+'</span><span class="u">мл</span>';
+    drumEl.appendChild(row);
+  });
+  const pad2 = document.createElement('div'); pad2.className='pad'; drumEl.appendChild(pad2);
+
+  const rows = Array.from(drumEl.querySelectorAll('.row'));
+  let currentIndex = values.indexOf(250);
+
+  function applyMid(idx){
+    rows.forEach((r,i)=> r.classList.toggle('mid', i===idx));
+  }
+
+  const DAILY_TARGET = 2500;
+  function updateHero(ml){
+    document.getElementById('heroAmount').textContent = ml;
+    const pct = Math.round((ml/DAILY_TARGET)*100);
+    document.getElementById('heroPill').textContent = pct + '% от дневной нормы';
+    // sync preset highlight
+    document.querySelectorAll('.preset').forEach(p=>{
+      p.classList.toggle('on', Number(p.dataset.ml)===ml);
+    });
+  }
+
+  function scrollToValue(v, smooth){
+    const idx = values.indexOf(v);
+    if(idx < 0) return;
+    currentIndex = idx;
+    applyMid(idx);
+    drumEl.scrollTo({ top: idx*ROW_H, behavior: smooth ? 'smooth' : 'auto' });
+    updateHero(v);
+  }
+
+  let raf=null;
+  drumEl.addEventListener('scroll', ()=>{
+    if(raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(()=>{
+      const idx = Math.round(drumEl.scrollTop / ROW_H);
+      const clamped = Math.min(values.length-1, Math.max(0, idx));
+      if(clamped !== currentIndex){ currentIndex = clamped; applyMid(currentIndex); updateHero(values[currentIndex]); }
+    });
+  });
+
+  requestAnimationFrame(()=>{ scrollToValue(250, false); });
+
+  // ---- presets ----
+  document.getElementById('presetRow').addEventListener('click', (e)=>{
+    const chip = e.target.closest('.preset'); if(!chip) return;
+    scrollToValue(Number(chip.dataset.ml), true);
+  });
+
+  // ---- fine ± buttons ----
+  document.getElementById('minusBtn').onclick = ()=>{
+    const v = Math.max(MIN_ML, values[currentIndex]-STEP_ML);
+    scrollToValue(v, true);
+  };
+  document.getElementById('plusBtn').onclick = ()=>{
+    const v = Math.min(MAX_ML, values[currentIndex]+STEP_ML);
+    scrollToValue(v, true);
+  };
+})();
+</script>
+</body>
+</html>

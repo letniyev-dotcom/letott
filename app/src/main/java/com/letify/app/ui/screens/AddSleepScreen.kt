@@ -37,6 +37,8 @@ private val MINUTES_5 = (0..55 step 5).toList()
  * entirely: a live "7ч 30м" hero readout with a status pill (below
  * norm / within norm / long sleep) sits above two wheel-picker time
  * cards ("Лёг спать" / "Проснулся"), followed by emoji quality chips.
+ * Saving is a single tap on the header checkmark — same pattern as
+ * the "Вес" sheet — rather than a separate bottom "Сохранить" button.
  *
  * The wheels reuse the shared [WheelPicker] — its fade mask already
  * dissolves the top/bottom rows smoothly via a gradient alpha instead
@@ -67,8 +69,8 @@ fun AddSleepScreen(onBack: () -> Unit) {
     LetifyBottomSheet(
         title = "Записать сон",
         onDismiss = onBack,
-        primaryLabel = "Сохранить",
-        onPrimary = {
+        trailingIcon = "check-bold",
+        onTrailing = {
             state.logSleep(fromTotal, toTotal, quality)
         },
     ) {

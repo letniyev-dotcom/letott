@@ -484,7 +484,7 @@ fun LetifyApp() {
         // swipe-back, no-op onBack). Keeps the parent visible during
         // child push/pop so the home tab never flashes through.
         underlay?.let { u ->
-            if (u != AddOverlay.Weight) {
+            if (u != AddOverlay.Weight && u != AddOverlay.Sleep) {
                 // Nested push now behaves EXACTLY like a top-level push: the parent
                 // (underlay) slides left in lockstep with the incoming child, driven
                 // by the SAME `nestedParallax` Animatable the active top reads —
@@ -529,10 +529,15 @@ fun LetifyApp() {
         }
 
         // Multi-field forms get the full-screen "slide in from the right"
-        // overlay. Weight is a BottomSheet (rendered outside this branch).
+        // overlay. Weight and Sleep are BottomSheets (rendered outside this
+        // branch) — wrapping them in RoundedSlideOverlay would run a full
+        // page-slide transition BEFORE the sheet's own slide-up animation,
+        // which reads as "the screen changes, then the sheet opens".
         overlay?.let { current ->
             if (current == AddOverlay.Weight) {
                 AddWeightScreen(onBack = { pop() })
+            } else if (current == AddOverlay.Sleep) {
+                AddSleepScreen(onBack = { pop() })
             } else {
                 // Only animate-in for PUSH actions. If we got here via
                 // POP (the user dismissed a child overlay), this view
@@ -648,7 +653,7 @@ private fun OverlayContent(
             onAddMeal = onPushNutrition,
             onWaterHistory = onPushWaterHistory,
         )
-        AddOverlay.Sleep -> AddSleepScreen(onBack = animatedBack)
+        AddOverlay.Sleep -> {} // sleep is a bottom-sheet, handled elsewhere
         AddOverlay.Weight -> {} // weight is a bottom-sheet, handled elsewhere
         AddOverlay.EditProfile -> EditProfileScreen(onBack = animatedBack)
         AddOverlay.Goals -> GoalsScreen(onBack = animatedBack)
