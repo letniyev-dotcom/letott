@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -120,7 +122,16 @@ fun WallScreen(
         AnimatedContent(
             targetState = showProfile,
             transitionSpec = {
-                fadeIn(tween(240)) togetherWith fadeOut(tween(160))
+                if (targetState) {
+                    // Opening the profile: it grows in a touch slower than the
+                    // feed dismisses, so the flight reads as a reveal.
+                    fadeIn(tween(240)) togetherWith fadeOut(tween(160))
+                } else {
+                    // Closing: the exact mirror of opening — same 240ms/160ms
+                    // pairing, just re-assigned so Profile's fade-out matches
+                    // the duration it faded in with, instead of feeling abrupt.
+                    fadeIn(tween(160)) togetherWith fadeOut(tween(240))
+                }
             },
             label = "WallHost",
         ) { profileVisible ->
@@ -428,7 +439,7 @@ private fun WallFeedContent(
                         rememberSharedContentState(key = "wallAvatar"),
                         animatedVisibilityScope = animatedScope,
                     ),
-                ) { WallAvatar(size = 34.dp) }
+                ) { WallAvatar(size = 42.dp) }
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
@@ -438,10 +449,14 @@ private fun WallFeedContent(
                         fontSize = androidx.compose.ui.unit.TextUnit(
                             19f, androidx.compose.ui.unit.TextUnitType.Sp,
                         ),
-                        modifier = Modifier.sharedElement(
-                            rememberSharedContentState(key = "wallTitle"),
-                            animatedVisibilityScope = animatedScope,
-                        ),
+                        maxLines = 1,
+                        modifier = Modifier
+                            .wrapContentWidth()
+                            .sharedBounds(
+                                rememberSharedContentState(key = "wallTitle"),
+                                animatedVisibilityScope = animatedScope,
+                                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.scaleToBounds(),
+                            ),
                     )
                     Text(
                         pluralMessages(state.wallEntryCount),
@@ -455,12 +470,16 @@ private fun WallFeedContent(
         }
 
         // ── bottom input island ─────────────────────────────────────
+        //   imePadding lifts it smoothly with the keyboard (same pattern as
+        //   OverlayScreen's floating action button); navigationBarsPadding
+        //   keeps it clear of the gesture pill once the keyboard is closed.
         GlassIsland(
             Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 14.dp)
-                .padding(bottom = 16.dp)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 16.dp),
             shape = RoundedCornerShape(28.dp),
         ) {
             Row(
@@ -830,10 +849,14 @@ private fun WallProfileContent(
                         "Стена",
                         color = Letify.colors.text,
                         style = Letify.typography.headlineLarge,
-                        modifier = Modifier.sharedElement(
-                            rememberSharedContentState(key = "wallTitle"),
-                            animatedVisibilityScope = animatedScope,
-                        ),
+                        maxLines = 1,
+                        modifier = Modifier
+                            .wrapContentWidth()
+                            .sharedBounds(
+                                rememberSharedContentState(key = "wallTitle"),
+                                animatedVisibilityScope = animatedScope,
+                                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.scaleToBounds(),
+                            ),
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
