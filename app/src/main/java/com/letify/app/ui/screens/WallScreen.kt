@@ -455,7 +455,7 @@ private fun WallFeedContent(
                             .sharedBounds(
                                 rememberSharedContentState(key = "wallTitle"),
                                 animatedVisibilityScope = animatedScope,
-                                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.scaleToBounds(),
+                                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                             ),
                     )
                     Text(
@@ -855,7 +855,7 @@ private fun WallProfileContent(
                             .sharedBounds(
                                 rememberSharedContentState(key = "wallTitle"),
                                 animatedVisibilityScope = animatedScope,
-                                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.scaleToBounds(),
+                                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                             ),
                     )
                     Spacer(Modifier.height(4.dp))
