@@ -24,7 +24,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,6 +72,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.letify.app.ui.components.BackChevron
 import com.letify.app.ui.components.NoFeedbackButton
+import com.letify.app.ui.components.noFeedbackClick
 import com.letify.app.ui.icons.SolarIcon
 import com.letify.app.ui.state.AppState
 import com.letify.app.ui.state.LocalAppState
@@ -243,12 +243,6 @@ private fun GlassIsland(
             .clip(shape)
             .background(
                 if (Letify.colors.isDark) Color(0xE6181818) else Color(0xF2FFFFFF),
-                shape,
-            )
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = 0.06f), Color.Transparent),
-                ),
                 shape,
             ),
     ) { content() }
@@ -425,8 +419,8 @@ private fun WallFeedContent(
                 .align(Alignment.TopCenter)
                 .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp)
                 .wrapContentWidth()
-                .clickable(onClick = onOpenProfile)
-                .padding(vertical = 8.dp, horizontal = 10.dp),
+                .noFeedbackClick(onClick = onOpenProfile)
+                .padding(vertical = 10.dp, horizontal = 14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -434,13 +428,16 @@ private fun WallFeedContent(
                         rememberSharedContentState(key = "wallAvatar"),
                         animatedVisibilityScope = animatedScope,
                     ),
-                ) { WallAvatar(size = 36.dp) }
-                Spacer(Modifier.width(10.dp))
+                ) { WallAvatar(size = 34.dp) }
+                Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
                         "Стена",
                         color = Letify.colors.text,
-                        style = Letify.typography.titleSmall,
+                        style = Letify.typography.titleLarge,
+                        fontSize = androidx.compose.ui.unit.TextUnit(
+                            19f, androidx.compose.ui.unit.TextUnitType.Sp,
+                        ),
                         modifier = Modifier.sharedElement(
                             rememberSharedContentState(key = "wallTitle"),
                             animatedVisibilityScope = animatedScope,
