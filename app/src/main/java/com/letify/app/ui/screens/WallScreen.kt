@@ -175,16 +175,25 @@ private fun buildBlocks(state: AppState): List<WallBlock> =
         state.wallNotes.map { WallBlock.Note(it) })
         .sortedByDescending { it.createdAt }
 
+/**
+ * [blocks] is newest-first. The feed renders with `reverseLayout = true`
+ * (index 0 pinned to the bottom of the screen, like Telegram/any real
+ * messenger — new messages appear at the bottom, not the top) so a day's
+ * header must come AFTER that day's items in this list, not before: with
+ * reverseLayout, later indices render higher on screen, so putting the
+ * header right after the day's oldest item is what makes it visually land
+ * above that day's messages instead of underneath them.
+ */
 private fun buildRows(blocks: List<WallBlock>): List<FeedRow> {
     val rows = mutableListOf<FeedRow>()
-    var lastLabel: String? = null
-    for (b in blocks) {
-        val label = dayLabel(b.createdAt)
-        if (label != lastLabel) {
-            rows += FeedRow.Header(label)
-            lastLabel = label
+    var i = 0
+    while (i < blocks.size) {
+        val label = dayLabel(blocks[i].createdAt)
+        while (i < blocks.size && dayLabel(blocks[i].createdAt) == label) {
+            rows += FeedRow.Item(blocks[i])
+            i++
         }
-        rows += FeedRow.Item(b)
+        rows += FeedRow.Header(label)
     }
     return rows
 }
@@ -362,6 +371,7 @@ private fun WallFeedContent(
     DisposableEffect(Unit) { onDispose { if (isRecording) stopRecording(save = false) } }
 
     var noteText by remember { mutableStateOf(TextFieldValue("")) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     fun sendNote() {
         val text = noteText.text.trim()
@@ -370,14 +380,33 @@ private fun WallFeedContent(
         noteText = TextFieldValue("")
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // New items land at index 0 (reverseLayout + newest-first sort), which
+    // is already where a resting scroll position sits — but if the person
+    // had scrolled up to read older entries, snap back down on send/receive,
+    // same as any real chat.
+    LaunchedEffect(rows.size) {
+        if (rows.isNotEmpty()) listState.animateScrollToItem(0)
+    }
+
+    // imePadding lives on the OUTER container so the message list and the
+    // input pill rise together as one unit when the keyboard opens — this
+    // is what makes it behave like Telegram instead of only the input bar
+    // sliding up while the chat stays put underneath the keyboard.
+    Box(Modifier.fillMaxSize().imePadding()) {
         LazyColumn(
             Modifier.fillMaxSize(),
+            state = listState,
+            reverseLayout = true,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 78.dp,
+                // Swapped vs a normal (non-reversed) list: with
+                // reverseLayout=true, "top" padding sits just above index 0
+                // — which reverseLayout pins to the BOTTOM of the screen,
+                // right above the input pill — and "bottom" padding lands
+                // near the top of the screen, under the header pill.
+                top = 92.dp,
                 start = 14.dp,
                 end = 14.dp,
-                bottom = 92.dp,
+                bottom = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 78.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -425,23 +454,31 @@ private fun WallFeedContent(
         }
 
         // ── top island ───────────────────────────────────────────────
+        //   Sized like the input pill below (fillMaxWidth + the same
+        //   14dp/16dp outer padding), not wrapped tight to its content —
+        //   the avatar (36dp) sits clearly smaller than the pill itself.
         GlassIsland(
             Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp)
-                .wrapContentWidth()
+                .fillMaxWidth()
                 .noFeedbackClick(onClick = onOpenProfile)
-                .padding(vertical = 10.dp, horizontal = 14.dp),
+                .padding(horizontal = 14.dp, vertical = 16.dp),
+            shape = RoundedCornerShape(28.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Box(
-                    Modifier.sharedElement(
+                    Modifier.sharedBounds(
                         rememberSharedContentState(key = "wallAvatar"),
                         animatedVisibilityScope = animatedScope,
+                        resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                     ),
-                ) { WallAvatar(size = 42.dp) }
+                ) { WallAvatar(size = 36.dp) }
                 Spacer(Modifier.width(12.dp))
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(
                         "Стена",
                         color = Letify.colors.text,
@@ -451,7 +488,7 @@ private fun WallFeedContent(
                         ),
                         maxLines = 1,
                         modifier = Modifier
-                            .wrapContentWidth()
+                            .wrapContentWidth(Alignment.Start)
                             .sharedBounds(
                                 rememberSharedContentState(key = "wallTitle"),
                                 animatedVisibilityScope = animatedScope,
@@ -465,19 +502,19 @@ private fun WallFeedContent(
                     )
                 }
                 Spacer(Modifier.width(6.dp))
-                Text("⌄", color = Letify.colors.muted, style = Letify.typography.labelSmall)
+                SolarIcon(name = "alt-arrow-down-bold-duotone", tint = Letify.colors.muted, size = 16.dp)
             }
         }
 
         // ── bottom input island ─────────────────────────────────────
-        //   imePadding lifts it smoothly with the keyboard (same pattern as
-        //   OverlayScreen's floating action button); navigationBarsPadding
-        //   keeps it clear of the gesture pill once the keyboard is closed.
+        //   Keyboard-avoidance now lives on the parent Box (see its
+        //   .imePadding() above), which lifts this pill AND the message
+        //   list together; navigationBarsPadding still keeps it clear of
+        //   the gesture pill once the keyboard is closed.
         GlassIsland(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .imePadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 16.dp),
             shape = RoundedCornerShape(28.dp),
@@ -552,7 +589,7 @@ private fun WallFeedContent(
                             Box(
                                 Modifier.size(40.dp).clip(CircleShape).background(Letify.colors.track),
                                 contentAlignment = Alignment.Center,
-                            ) { MicGlyph(tint = Letify.colors.text) }
+                            ) { SolarIcon(name = "microphone-bold-duotone", tint = Letify.colors.text, size = 18.dp) }
                         }
                         Spacer(Modifier.width(6.dp))
                         IslandButton(
@@ -564,52 +601,6 @@ private fun WallFeedContent(
                 }
             }
         }
-    }
-}
-
-/**
- * Drawn microphone glyph — there is no "microphone" SVG in
- * assets/icons/, so this mirrors [BackChevron]'s approach (plain Canvas
- * shape, single source of truth) instead of pointing SolarIcon at an
- * asset that doesn't exist.
- */
-@Composable
-private fun MicGlyph(tint: Color, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 16.dp) {
-    androidx.compose.foundation.Canvas(modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val capsuleW = w * 0.42f
-        val capsuleH = h * 0.56f
-        drawRoundRect(
-            color = tint,
-            topLeft = androidx.compose.ui.geometry.Offset((w - capsuleW) / 2f, 0f),
-            size = androidx.compose.ui.geometry.Size(capsuleW, capsuleH),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(capsuleW / 2f, capsuleW / 2f),
-        )
-        val strokeW = w * 0.09f
-        drawArc(
-            color = tint,
-            startAngle = 20f,
-            sweepAngle = 140f,
-            useCenter = false,
-            topLeft = androidx.compose.ui.geometry.Offset(w * 0.10f, h * 0.18f),
-            size = androidx.compose.ui.geometry.Size(w * 0.80f, h * 0.62f),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeW, cap = androidx.compose.ui.graphics.StrokeCap.Round),
-        )
-        drawLine(
-            color = tint,
-            start = androidx.compose.ui.geometry.Offset(w / 2f, h * 0.80f),
-            end = androidx.compose.ui.geometry.Offset(w / 2f, h * 0.98f),
-            strokeWidth = strokeW,
-            cap = androidx.compose.ui.graphics.StrokeCap.Round,
-        )
-        drawLine(
-            color = tint,
-            start = androidx.compose.ui.geometry.Offset(w * 0.30f, h * 0.98f),
-            end = androidx.compose.ui.geometry.Offset(w * 0.70f, h * 0.98f),
-            strokeWidth = strokeW,
-            cap = androidx.compose.ui.graphics.StrokeCap.Round,
-        )
     }
 }
 
@@ -839,9 +830,10 @@ private fun WallProfileContent(
             item {
                 Column(Modifier.fillMaxWidth().padding(bottom = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
-                        Modifier.sharedElement(
+                        Modifier.sharedBounds(
                             rememberSharedContentState(key = "wallAvatar"),
                             animatedVisibilityScope = animatedScope,
+                            resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                         ),
                     ) { WallAvatar(size = 88.dp) }
                     Spacer(Modifier.height(12.dp))
@@ -951,7 +943,7 @@ private fun WallProfileContent(
                         items(voices.size) { i ->
                             val v = voices[i]
                             ProfileListRow(
-                                icon = "smartphone-bold-duotone",
+                                icon = "microphone-bold-duotone",
                                 title = "Голосовая заметка",
                                 subtitle = "${dayLabel(v.createdAt)} · ${timeLabel(v.createdAt)}",
                                 trailing = durationLabel(v.durationMs),
