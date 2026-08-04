@@ -84,6 +84,7 @@ import com.letify.app.ui.state.WallNote
 import com.letify.app.ui.theme.Letify
 import com.letify.app.ui.theme.LetifyColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -232,10 +233,21 @@ private fun pluralMessages(n: Int): String {
 
 // ─────────────────────────── Shared "wall identity" ───────────────────────
 
-/** Small gradient glyph standing in for the wall itself (not the user). */
+/**
+ * Small gradient glyph standing in for the wall itself (not the user).
+ *
+ * Uses [BoxWithConstraints] so the inner icon sizes itself off the box's
+ * REAL, live constraints — which is what the (cheaper) `sharedElement`
+ * modifier animates directly — rather than off the fixed `size` param.
+ * That's what keeps the icon from "jumping" mid-flight between the 38dp
+ * feed avatar and the 88dp profile avatar, without needing the heavier
+ * `sharedBounds` + ScaleToBounds machinery (which was doing an extra
+ * cross-fade/scale pass on every profile open/close and was a big part
+ * of why that transition felt janky).
+ */
 @Composable
 private fun WallAvatar(size: androidx.compose.ui.unit.Dp) {
-    Box(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier
             .size(size)
             .clip(CircleShape)
@@ -246,7 +258,7 @@ private fun WallAvatar(size: androidx.compose.ui.unit.Dp) {
             ),
         contentAlignment = Alignment.Center,
     ) {
-        SolarIcon(name = "notebook-bold-duotone", tint = Color.White, size = size * 0.5f)
+        SolarIcon(name = "notebook-bold-duotone", tint = Color.White, size = maxWidth * 0.5f)
     }
 }
 
@@ -372,20 +384,14 @@ private fun WallFeedContent(
 
     var noteText by remember { mutableStateOf(TextFieldValue("")) }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     fun sendNote() {
         val text = noteText.text.trim()
         if (text.isEmpty()) return
         state.addWallNote(text)
         noteText = TextFieldValue("")
-    }
-
-    // New items land at index 0 (reverseLayout + newest-first sort), which
-    // is already where a resting scroll position sits — but if the person
-    // had scrolled up to read older entries, snap back down on send/receive,
-    // same as any real chat.
-    LaunchedEffect(rows.size) {
-        if (rows.isNotEmpty()) listState.animateScrollToItem(0)
+        scope.launch { listState.animateScrollToItem(0) }
     }
 
     // imePadding lives on the OUTER container so the message list and the
@@ -464,17 +470,16 @@ private fun WallFeedContent(
                 .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp)
                 .wrapContentWidth()
                 .noFeedbackClick(onClick = onOpenProfile)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            shape = RoundedCornerShape(26.dp),
+                .padding(horizontal = 18.dp, vertical = 20.dp),
+            shape = RoundedCornerShape(28.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.sharedBounds(
+                    Modifier.sharedElement(
                         rememberSharedContentState(key = "wallAvatar"),
                         animatedVisibilityScope = animatedScope,
-                        resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                     ),
-                ) { WallAvatar(size = 38.dp) }
+                ) { WallAvatar(size = 40.dp) }
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
@@ -828,10 +833,9 @@ private fun WallProfileContent(
             item {
                 Column(Modifier.fillMaxWidth().padding(bottom = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
-                        Modifier.sharedBounds(
+                        Modifier.sharedElement(
                             rememberSharedContentState(key = "wallAvatar"),
                             animatedVisibilityScope = animatedScope,
-                            resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                         ),
                     ) { WallAvatar(size = 88.dp) }
                     Spacer(Modifier.height(12.dp))
