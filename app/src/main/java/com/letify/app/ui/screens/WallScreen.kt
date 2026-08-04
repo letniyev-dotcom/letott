@@ -454,31 +454,29 @@ private fun WallFeedContent(
         }
 
         // ── top island ───────────────────────────────────────────────
-        //   Sized like the input pill below (fillMaxWidth + the same
-        //   14dp/16dp outer padding), not wrapped tight to its content —
-        //   the avatar (36dp) sits clearly smaller than the pill itself.
+        //   Compact, centered chip (not stretched edge-to-edge like the
+        //   input bar) — just taller/roomier than before so it reads as
+        //   the same "weight" as the input pill, with the avatar (38dp)
+        //   staying clearly smaller than the pill around it.
         GlassIsland(
             Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp)
-                .fillMaxWidth()
+                .wrapContentWidth()
                 .noFeedbackClick(onClick = onOpenProfile)
-                .padding(horizontal = 14.dp, vertical = 16.dp),
-            shape = RoundedCornerShape(28.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            shape = RoundedCornerShape(26.dp),
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.sharedBounds(
                         rememberSharedContentState(key = "wallAvatar"),
                         animatedVisibilityScope = animatedScope,
                         resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                     ),
-                ) { WallAvatar(size = 36.dp) }
+                ) { WallAvatar(size = 38.dp) }
                 Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+                Column {
                     Text(
                         "Стена",
                         color = Letify.colors.text,
@@ -488,7 +486,7 @@ private fun WallFeedContent(
                         ),
                         maxLines = 1,
                         modifier = Modifier
-                            .wrapContentWidth(Alignment.Start)
+                            .wrapContentWidth()
                             .sharedBounds(
                                 rememberSharedContentState(key = "wallTitle"),
                                 animatedVisibilityScope = animatedScope,
