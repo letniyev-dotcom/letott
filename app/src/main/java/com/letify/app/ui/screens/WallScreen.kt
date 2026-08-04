@@ -33,9 +33,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -236,14 +238,12 @@ private fun pluralMessages(n: Int): String {
 /**
  * Small gradient glyph standing in for the wall itself (not the user).
  *
- * Uses [BoxWithConstraints] so the inner icon sizes itself off the box's
- * REAL, live constraints — which is what the (cheaper) `sharedElement`
- * modifier animates directly — rather than off the fixed `size` param.
- * That's what keeps the icon from "jumping" mid-flight between the 38dp
- * feed avatar and the 88dp profile avatar, without needing the heavier
- * `sharedBounds` + ScaleToBounds machinery (which was doing an extra
- * cross-fade/scale pass on every profile open/close and was a big part
- * of why that transition felt janky).
+ * The feed<->profile flight is driven by `sharedBounds` + ScaleToBounds
+ * on the call sites (not by this composable) — that's what keeps the
+ * inner icon from popping between the 38dp feed size and the 88dp
+ * profile size. [BoxWithConstraints] here just keeps the icon sized
+ * proportionally (50% of whatever width it's actually given) instead of
+ * hardcoding it off the `size` param twice.
  */
 @Composable
 private fun WallAvatar(size: androidx.compose.ui.unit.Dp) {
@@ -460,26 +460,27 @@ private fun WallFeedContent(
         }
 
         // ── top island ───────────────────────────────────────────────
-        //   Compact, centered chip (not stretched edge-to-edge like the
-        //   input bar) — just taller/roomier than before so it reads as
-        //   the same "weight" as the input pill, with the avatar (38dp)
-        //   staying clearly smaller than the pill around it.
+        //   heightIn(min=...) gives it a real, fixed "thickness" that has
+        //   nothing to do with the avatar's size — it won't shrink back
+        //   down to just wrapping the avatar however small the avatar is.
         GlassIsland(
             Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp)
                 .wrapContentWidth()
+                .heightIn(min = 92.dp)
                 .noFeedbackClick(onClick = onOpenProfile)
-                .padding(horizontal = 18.dp, vertical = 20.dp),
-            shape = RoundedCornerShape(28.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            shape = RoundedCornerShape(30.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.sharedElement(
+                    Modifier.sharedBounds(
                         rememberSharedContentState(key = "wallAvatar"),
                         animatedVisibilityScope = animatedScope,
+                        resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                     ),
-                ) { WallAvatar(size = 40.dp) }
+                ) { WallAvatar(size = 38.dp) }
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
@@ -833,9 +834,10 @@ private fun WallProfileContent(
             item {
                 Column(Modifier.fillMaxWidth().padding(bottom = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
-                        Modifier.sharedElement(
+                        Modifier.sharedBounds(
                             rememberSharedContentState(key = "wallAvatar"),
                             animatedVisibilityScope = animatedScope,
+                            resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds(),
                         ),
                     ) { WallAvatar(size = 88.dp) }
                     Spacer(Modifier.height(12.dp))
